@@ -38,18 +38,32 @@ function kindLabel(kind: PlanItem['kind']): string {
   }
 }
 
-async function openBooking(url: string): Promise<void> {
+async function openExternal(url: string): Promise<void> {
   try {
     const can = await Linking.canOpenURL(url);
     if (can) await Linking.openURL(url);
+    else await Linking.openURL(url);
   } catch (err) {
-    console.warn('[booking] failed to open url:', err);
+    console.warn('[link] failed to open url:', err);
   }
+}
+
+/** Apple Maps URL for a stop, from coordinates or address. Null if neither. */
+function mapsUrl(item: PlanItem): string | null {
+  const label = encodeURIComponent(item.title);
+  if (item.lat != null && item.lng != null) {
+    return `https://maps.apple.com/?q=${label}&ll=${item.lat},${item.lng}`;
+  }
+  if (item.address) {
+    return `https://maps.apple.com/?q=${encodeURIComponent(item.address)}`;
+  }
+  return null;
 }
 
 export function PlanItemCard({ item }: { item: PlanItem }) {
   const rail = kindColor(item.kind);
   const isConnector = item.kind === 'walk' || item.kind === 'break';
+  const directions = mapsUrl(item);
 
   return (
     <View style={[styles.row, isConnector && styles.rowConnector]}>
@@ -78,14 +92,29 @@ export function PlanItemCard({ item }: { item: PlanItem }) {
           {item.bucketItemId ? <Caption muted>· from your list</Caption> : null}
         </View>
 
-        {item.bookingUrl ? (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => openBooking(item.bookingUrl as string)}
-            style={({ pressed }) => [styles.bookBtn, pressed && styles.bookBtnPressed]}
-          >
-            <Caption>{item.kind === 'event' ? 'Tickets ↗' : 'Book ↗'}</Caption>
-          </Pressable>
+        {!isConnector && (item.bookingUrl || directions) ? (
+          <View style={styles.actionRow}>
+            {item.bookingUrl ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={item.kind === 'event' ? 'Get tickets' : 'Book'}
+                onPress={() => openExternal(item.bookingUrl as string)}
+                style={({ pressed }) => [styles.bookBtn, pressed && styles.bookBtnPressed]}
+              >
+                <Caption>{item.kind === 'event' ? 'Tickets ↗' : 'Book ↗'}</Caption>
+              </Pressable>
+            ) : null}
+            {directions ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Directions to ${item.title}`}
+                onPress={() => openExternal(directions)}
+                style={({ pressed }) => [styles.dirBtn, pressed && styles.bookBtnPressed]}
+              >
+                <Caption muted>Directions ↗</Caption>
+              </Pressable>
+            ) : null}
+          </View>
         ) : null}
       </View>
     </View>
@@ -129,13 +158,27 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.xs,
   },
+  actionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
   bookBtn: {
     alignSelf: 'flex-start',
-    marginTop: spacing.xs,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
     backgroundColor: colors.accentSoft,
+  },
+  dirBtn: {
+    alignSelf: 'flex-start',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   bookBtnPressed: {
     opacity: 0.7,
