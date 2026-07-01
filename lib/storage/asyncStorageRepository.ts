@@ -22,7 +22,8 @@ const KEYS = {
   profile: `${STORAGE_PREFIX}profile`,
   availability: `${STORAGE_PREFIX}availability`, // map: date -> Availability
   bucketList: `${STORAGE_PREFIX}bucketList`,
-  plans: `${STORAGE_PREFIX}plans`, // map: planId -> Plan
+  plans: `${STORAGE_PREFIX}plans`, // map: date|start|end -> Plan
+  locked: `${STORAGE_PREFIX}lockedPlanIds`, // array of plan ids with nudges
   feedback: `${STORAGE_PREFIX}feedback`, // array of Feedback
 } as const;
 
@@ -108,6 +109,19 @@ export class AsyncStorageRepository implements Repository {
     return Object.values(map).filter((p) => p.date === date);
   }
 
+  async getAllPlans(): Promise<Plan[]> {
+    const map = await this.plansMap();
+    return Object.values(map);
+  }
+
+  async getLockedPlanIds(): Promise<string[]> {
+    return readJSON<string[]>(KEYS.locked, []);
+  }
+
+  async saveLockedPlanIds(ids: string[]): Promise<void> {
+    await writeJSON(KEYS.locked, ids);
+  }
+
   async savePlan(plan: Plan): Promise<void> {
     const map = await this.plansMap();
     map[planKey(plan.date, plan.window.start, plan.window.end)] = plan;
@@ -140,6 +154,7 @@ export class AsyncStorageRepository implements Repository {
       KEYS.availability,
       KEYS.bucketList,
       KEYS.plans,
+      KEYS.locked,
       KEYS.feedback,
     ]);
   }

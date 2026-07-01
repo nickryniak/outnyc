@@ -11,6 +11,7 @@ import { create } from 'zustand';
 import { BUCKET_SEED, SEED_PROFILE } from './constants';
 import {
   cancelPlanNotifications,
+  ensureNotificationPermission,
   schedulePlanNotifications,
 } from './notifications';
 import { defaultPlanner } from './planner';
@@ -35,6 +36,12 @@ export interface PlanningState {
   error?: string;
 }
 
+/** Outcome of locking in a plan, so the UI can give honest feedback. */
+export interface LockResult {
+  scheduled: number;
+  reason: 'ok' | 'permission-denied' | 'none-upcoming';
+}
+
 interface StoreState {
   // ---- bootstrap ----
   loadStatus: LoadStatus;
@@ -52,6 +59,7 @@ interface StoreState {
 
   // ---- actions ----
   bootstrap(): Promise<void>;
+  resetApp(): Promise<void>;
   saveProfile(profile: Profile): Promise<void>;
   completeOnboarding(profile: Omit<Profile, 'onboarded'>): Promise<void>;
 
@@ -63,7 +71,8 @@ interface StoreState {
 
   generatePlan(date: string, window: TimeWindow, modifier?: PlanModifier): Promise<void>;
   reshufflePlan(date: string, window: TimeWindow, modifier: PlanModifier): Promise<void>;
-  lockInPlan(planId: string): Promise<void>;
+  lockInPlan(planId: string): Promise<LockResult>;
+  unlockPlan(planId: string): Promise<void>;
 }
 
 export function planKey(date: string, window: TimeWindow): string {
@@ -72,6 +81,55 @@ export function planKey(date: string, window: TimeWindow): string {
 
 function genId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** Re-entrancy guard so concurrent bootstrap callers don't double-seed. */
+let booting = false;
+
+type SetFn = (
+  partial: Partial<StoreState> | ((s: StoreState) => Partial<StoreState>),
+) => void;
+
+/**
+ * Load everything from the repository into the store, seeding profile + bucket
+ * list on first run. Shared by bootstrap() and resetApp().
+ */
+async function loadAllInto(set: SetFn): Promise<void> {
+  let profile = await repository.getProfile();
+  let bucketList = await repository.getBucketList();
+
+  // First run: seed profile + bucket list so the app is usable immediately.
+  if (!profile) {
+    profile = { ...SEED_PROFILE };
+    await repository.saveProfile(profile);
+  }
+  if (bucketList.length === 0) {
+    bucketList = BUCKET_SEED.map((b) => ({ ...b }));
+    await repository.saveBucketList(bucketList);
+  }
+
+  const availabilityList = await repository.getAllAvailability();
+  const availabilityByDate: Record<string, Availability> = {};
+  for (const a of availabilityList) availabilityByDate[a.date] = a;
+
+  // Restore previously generated plans + which of them are locked-in, so a
+  // day you planned/locked survives an app restart.
+  const plans = await repository.getAllPlans();
+  const plansByKey: Record<string, Plan> = {};
+  for (const p of plans) plansByKey[planKey(p.date, p.window)] = p;
+
+  const lockedIds = await repository.getLockedPlanIds();
+  const lockedPlanIds: Record<string, boolean> = {};
+  for (const id of lockedIds) lockedPlanIds[id] = true;
+
+  set({
+    profile,
+    bucketList,
+    availabilityByDate,
+    plansByKey,
+    lockedPlanIds,
+    loadStatus: 'ready',
+  });
 }
 
 export const useStore = create<StoreState>((set, get) => ({
@@ -85,36 +143,49 @@ export const useStore = create<StoreState>((set, get) => ({
 
   async bootstrap() {
     if (get().loadStatus === 'loading' || get().loadStatus === 'ready') return;
+    // Guard against two near-simultaneous callers both passing the check above
+    // (index gate + root layout) and double-seeding.
+    if (booting) return;
+    booting = true;
     set({ loadStatus: 'loading', loadError: undefined });
     try {
-      let profile = await repository.getProfile();
-      let bucketList = await repository.getBucketList();
-
-      // First run: seed profile + bucket list so the app is usable immediately.
-      if (!profile) {
-        profile = { ...SEED_PROFILE };
-        await repository.saveProfile(profile);
-      }
-      if (bucketList.length === 0) {
-        bucketList = BUCKET_SEED.map((b) => ({ ...b }));
-        await repository.saveBucketList(bucketList);
-      }
-
-      const availabilityList = await repository.getAllAvailability();
-      const availabilityByDate: Record<string, Availability> = {};
-      for (const a of availabilityList) availabilityByDate[a.date] = a;
-
-      set({
-        profile,
-        bucketList,
-        availabilityByDate,
-        loadStatus: 'ready',
-      });
+      await loadAllInto(set);
     } catch (err) {
       set({
         loadStatus: 'error',
         loadError: err instanceof Error ? err.message : 'Failed to load data',
       });
+    } finally {
+      booting = false;
+    }
+  },
+
+  async resetApp() {
+    // Cancel any scheduled nudges, wipe disk, then reload (which re-seeds).
+    for (const id of Object.keys(get().lockedPlanIds)) {
+      await cancelPlanNotifications(id);
+    }
+    await repository.clearAll();
+    set({
+      profile: null,
+      availabilityByDate: {},
+      bucketList: [],
+      plansByKey: {},
+      planning: {},
+      lockedPlanIds: {},
+      loadStatus: 'loading',
+      loadError: undefined,
+    });
+    booting = true;
+    try {
+      await loadAllInto(set);
+    } catch (err) {
+      set({
+        loadStatus: 'error',
+        loadError: err instanceof Error ? err.message : 'Failed to reset',
+      });
+    } finally {
+      booting = false;
     }
   },
 
@@ -180,13 +251,37 @@ export const useStore = create<StoreState>((set, get) => ({
     return runPlan(set, get, date, window, modifier);
   },
 
-  async lockInPlan(planId) {
+  async lockInPlan(planId): Promise<LockResult> {
     const plan = Object.values(get().plansByKey).find((p) => p.id === planId);
-    if (!plan) return;
+    if (!plan) return { scheduled: 0, reason: 'none-upcoming' };
+
+    // Check permission up front so we can tell the user *why* nothing was
+    // scheduled instead of falsely showing "Locked in".
+    const granted = await ensureNotificationPermission();
+    if (!granted) return { scheduled: 0, reason: 'permission-denied' };
+
     const count = await schedulePlanNotifications(plan);
-    set((s) => ({ lockedPlanIds: { ...s.lockedPlanIds, [planId]: count > 0 } }));
+    if (count === 0) return { scheduled: 0, reason: 'none-upcoming' };
+
+    const nextLocked = { ...get().lockedPlanIds, [planId]: true };
+    set({ lockedPlanIds: nextLocked });
+    await persistLocked(nextLocked);
+    return { scheduled: count, reason: 'ok' };
+  },
+
+  async unlockPlan(planId) {
+    await cancelPlanNotifications(planId);
+    const next = { ...get().lockedPlanIds };
+    delete next[planId];
+    set({ lockedPlanIds: next });
+    await persistLocked(next);
   },
 }));
+
+/** Persist the set of locked-in plan ids (only the truthy ones). */
+async function persistLocked(map: Record<string, boolean>): Promise<void> {
+  await repository.saveLockedPlanIds(Object.keys(map).filter((id) => map[id]));
+}
 
 /** Shared plan-generation routine for generate + reshuffle. */
 async function runPlan(
@@ -230,17 +325,21 @@ async function runPlan(
     // A reshuffle invalidates any previously locked-in notifications for the
     // prior plan at this window; cancel them so we don't leave stale nudges.
     const prior = get().plansByKey[key];
-    if (prior && prior.id !== plan.id) {
-      await cancelPlanNotifications(prior.id);
+    const invalidatesPrior = !!prior && prior.id !== plan.id;
+    if (invalidatesPrior) {
+      await cancelPlanNotifications(prior!.id);
+    }
+
+    let nextLocked = get().lockedPlanIds;
+    if (invalidatesPrior && nextLocked[prior!.id]) {
+      nextLocked = omit(nextLocked, prior!.id);
+      await persistLocked(nextLocked);
     }
 
     set((s) => ({
       plansByKey: { ...s.plansByKey, [key]: plan },
       planning: { ...s.planning, [key]: { status: 'idle' } },
-      lockedPlanIds:
-        prior && prior.id !== plan.id
-          ? omit(s.lockedPlanIds, prior.id)
-          : s.lockedPlanIds,
+      lockedPlanIds: nextLocked,
     }));
   } catch (err) {
     set((s) => ({

@@ -19,7 +19,6 @@ import {
 } from '../../components/ui';
 import { PROVIDER_FLAG_LIST, anyLive } from '../../lib/config';
 import { ensureNotificationPermission } from '../../lib/notifications';
-import { repository } from '../../lib/storage';
 import { useStore } from '../../lib/store';
 import { colors, radius, spacing } from '../../lib/theme';
 
@@ -27,6 +26,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const loadStatus = useStore((s) => s.loadStatus);
   const profile = useStore((s) => s.profile);
+  const resetApp = useStore((s) => s.resetApp);
   const [notifyMsg, setNotifyMsg] = useState<string | null>(null);
 
   if (loadStatus !== 'ready' || !profile) {
@@ -52,8 +52,7 @@ export default function SettingsScreen() {
           text: 'Reset',
           style: 'destructive',
           onPress: async () => {
-            await repository.clearAll();
-            // Re-seed by re-running bootstrap on a fresh store load.
+            await resetApp();
             router.replace('/');
           },
         },
@@ -69,6 +68,7 @@ export default function SettingsScreen() {
         <Body muted>
           {profile.defaultNeighborhoods.join(', ') || 'No neighborhoods set'}
         </Body>
+        {profile.homeBase ? <Body muted>Home base: {profile.homeBase}</Body> : null}
         <Body muted>
           Price {'$'.repeat(profile.priceRange.min)} – {'$'.repeat(profile.priceRange.max)}
         </Body>
@@ -76,7 +76,7 @@ export default function SettingsScreen() {
         <Button
           label="Edit preferences"
           variant="secondary"
-          onPress={() => router.push('/onboarding')}
+          onPress={() => router.push({ pathname: '/onboarding', params: { edit: '1' } })}
           style={styles.spaced}
         />
       </Card>

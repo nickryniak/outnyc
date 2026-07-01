@@ -5,7 +5,7 @@
 // onboarding and routes to the week view. Works fully on mock data.
 // =============================================================================
 
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +20,8 @@ const PRICE_TIERS: PriceTier[] = [1, 2, 3, 4];
 
 export default function Onboarding() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ edit?: string }>();
+  const isEdit = params.edit === '1';
   const insets = useSafeAreaInsets();
   const profile = useStore((s) => s.profile);
   const completeOnboarding = useStore((s) => s.completeOnboarding);
@@ -55,9 +57,12 @@ export default function Onboarding() {
         defaultNeighborhoods: neighborhoods,
         priceRange,
         interests,
-        homeBase: neighborhoods[0],
+        homeBase: neighborhoods.includes(profile?.homeBase ?? '')
+          ? profile?.homeBase
+          : neighborhoods[0],
       });
-      router.replace('/week');
+      if (isEdit) router.back();
+      else router.replace('/week');
     } finally {
       setSaving(false);
     }
@@ -69,10 +74,11 @@ export default function Onboarding() {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
-        <Title>OutNYC</Title>
+        <Title>{isEdit ? 'Edit preferences' : 'OutNYC'}</Title>
         <Body muted>
-          Tell us how you like to go out. You can change all of this later in
-          Settings — and everything works with no accounts and no API keys.
+          {isEdit
+            ? 'Update your defaults. These bias every plan the app makes.'
+            : 'Tell us how you like to go out. You can change all of this later in Settings — and everything works with no accounts and no API keys.'}
         </Body>
 
         <Heading>Party size</Heading>
@@ -146,11 +152,25 @@ export default function Onboarding() {
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
         <Button
-          label={canContinue ? 'Start planning' : 'Pick a neighborhood'}
+          label={
+            canContinue
+              ? isEdit
+                ? 'Save changes'
+                : 'Start planning'
+              : 'Pick a neighborhood'
+          }
           onPress={onContinue}
           disabled={!canContinue}
           loading={saving}
         />
+        {isEdit ? (
+          <Button
+            label="Cancel"
+            variant="ghost"
+            onPress={() => router.back()}
+            style={styles.cancelBtn}
+          />
+        ) : null}
       </View>
     </View>
   );
@@ -194,5 +214,9 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+    gap: spacing.sm,
+  },
+  cancelBtn: {
+    marginTop: 0,
   },
 });

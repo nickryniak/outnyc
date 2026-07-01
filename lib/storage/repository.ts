@@ -31,8 +31,13 @@ export interface Repository {
   // ---- plans (keyed by date+window) ----
   getPlan(date: string, windowStart: string, windowEnd: string): Promise<Plan | null>;
   getPlansForDate(date: string): Promise<Plan[]>;
+  getAllPlans(): Promise<Plan[]>;
   savePlan(plan: Plan): Promise<void>;
   deletePlan(planId: string): Promise<void>;
+
+  // ---- locked-in plans (ids with scheduled notifications) ----
+  getLockedPlanIds(): Promise<string[]>;
+  saveLockedPlanIds(ids: string[]): Promise<void>;
 
   // ---- feedback ----
   getFeedback(planId: string): Promise<Feedback[]>;
