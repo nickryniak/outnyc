@@ -1,19 +1,21 @@
 // =============================================================================
 // OutNYC — onboarding (app/onboarding.tsx)
 // =============================================================================
-// Sets party size, neighborhoods, price range, and interests, then completes
-// onboarding and routes to the week view. Works fully on mock data.
+// Sets party size, neighborhoods, price range, and interests. Doubles as the
+// "Edit preferences" screen (opened from Settings with ?edit=1).
 // =============================================================================
 
+import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Body, Button, Caption, Chip, Heading, Title } from '../components/ui';
+import { Skyline } from '../components/Skyline';
+import { Body, Button, Caption, Chip, Eyebrow, Heading } from '../components/ui';
 import { INTEREST_TAGS, NEIGHBORHOODS } from '../lib/constants';
 import { useStore } from '../lib/store';
-import { colors, radius, spacing } from '../lib/theme';
+import { colors, font, radius, spacing } from '../lib/theme';
 import type { PriceTier } from '../lib/types';
 
 const PRICE_TIERS: PriceTier[] = [1, 2, 3, 4];
@@ -47,8 +49,6 @@ export default function Onboarding() {
     return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
   }
 
-  // Leaving edit mode: pop back if possible, else fall back to Settings so the
-  // user can never get stranded (e.g. if this screen is the top of the stack).
   function exitEdit() {
     if (router.canGoBack()) router.back();
     else router.replace('/settings');
@@ -76,108 +76,107 @@ export default function Onboarding() {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + spacing.lg }]}>
+    <View style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top }]}
         showsVerticalScrollIndicator={false}
       >
-        <Title>{isEdit ? 'Edit preferences' : 'OutNYC'}</Title>
-        <Body muted>
-          {isEdit
-            ? 'Update your defaults. These bias every plan the app makes.'
-            : 'Tell us how you like to go out. You can change all of this later in Settings — and everything works with no accounts and no API keys.'}
-        </Body>
-
-        <Heading>Party size</Heading>
-        <View style={styles.stepperRow}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setPartySize((n) => Math.max(1, n - 1))}
-            style={styles.stepBtn}
-          >
-            <Body>−</Body>
-          </Pressable>
-          <View style={styles.stepValue}>
-            <Heading>{partySize}</Heading>
+        {/* Hero */}
+        <View style={styles.hero}>
+          <Skyline variant="evening" height={168} />
+          <LinearGradient
+            colors={['rgba(18,14,10,0.15)', 'transparent', 'rgba(18,14,10,0.72)']}
+            style={styles.heroScrim}
+          />
+          <View style={styles.heroText}>
+            <Text style={styles.heroEyebrow}>{isEdit ? 'PREFERENCES' : 'NEW YORK CITY'}</Text>
+            <Text style={styles.heroTitle}>{isEdit ? 'Edit your taste' : 'OutNYC'}</Text>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setPartySize((n) => Math.min(20, n + 1))}
-            style={styles.stepBtn}
-          >
-            <Body>+</Body>
-          </Pressable>
         </View>
 
-        <Heading>Neighborhoods</Heading>
-        <Caption muted>Pick at least one.</Caption>
-        <View style={styles.wrap}>
-          {NEIGHBORHOODS.map((n) => (
-            <Chip
-              key={n}
-              label={n}
-              selected={neighborhoods.includes(n)}
-              onPress={() => setNeighborhoods((cur) => toggle(cur, n))}
-            />
-          ))}
-        </View>
+        <View style={styles.bodyPad}>
+          <Body muted>
+            {isEdit
+              ? 'Update your defaults. These bias every plan the app makes.'
+              : 'Tell us how you like to go out. We’ll pack your free time into an ordered, walkable night — no accounts, no API keys.'}
+          </Body>
 
-        <Heading>Price range</Heading>
-        <View style={styles.wrap}>
-          {PRICE_TIERS.map((t) => {
-            const inRange = t >= priceRange.min && t <= priceRange.max;
-            return (
+          <Eyebrow>Party size</Eyebrow>
+          <View style={styles.stepperRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Decrease party size"
+              onPress={() => setPartySize((n) => Math.max(1, n - 1))}
+              style={styles.stepBtn}
+            >
+              <Text style={styles.stepSign}>−</Text>
+            </Pressable>
+            <Text style={styles.stepValue}>{partySize}</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Increase party size"
+              onPress={() => setPartySize((n) => Math.min(20, n + 1))}
+              style={styles.stepBtn}
+            >
+              <Text style={styles.stepSign}>+</Text>
+            </Pressable>
+          </View>
+
+          <Eyebrow>Neighborhoods</Eyebrow>
+          <Caption muted>Pick at least one.</Caption>
+          <View style={styles.wrap}>
+            {NEIGHBORHOODS.map((n) => (
+              <Chip
+                key={n}
+                label={n}
+                selected={neighborhoods.includes(n)}
+                onPress={() => setNeighborhoods((cur) => toggle(cur, n))}
+              />
+            ))}
+          </View>
+
+          <Eyebrow>Price range</Eyebrow>
+          <View style={styles.wrap}>
+            {PRICE_TIERS.map((t) => {
+              const inRange = t >= priceRange.min && t <= priceRange.max;
+              return (
+                <Chip
+                  key={t}
+                  label={'$'.repeat(t)}
+                  selected={inRange}
+                  onPress={() => {
+                    if (Math.abs(t - priceMin) <= Math.abs(t - priceMax)) setPriceMin(t);
+                    else setPriceMax(t);
+                  }}
+                />
+              );
+            })}
+          </View>
+
+          <Eyebrow>Interests</Eyebrow>
+          <View style={styles.wrap}>
+            {INTEREST_TAGS.map((t) => (
               <Chip
                 key={t}
-                label={'$'.repeat(t)}
-                selected={inRange}
-                onPress={() => {
-                  // Tapping sets the nearer bound to t.
-                  if (Math.abs(t - priceMin) <= Math.abs(t - priceMax)) setPriceMin(t);
-                  else setPriceMax(t);
-                }}
+                label={t}
+                selected={interests.includes(t)}
+                onPress={() => setInterests((cur) => toggle(cur, t))}
               />
-            );
-          })}
-        </View>
-        <Caption muted>
-          {'$'.repeat(priceRange.min)} – {'$'.repeat(priceRange.max)}
-        </Caption>
-
-        <Heading>Interests</Heading>
-        <View style={styles.wrap}>
-          {INTEREST_TAGS.map((t) => (
-            <Chip
-              key={t}
-              label={t}
-              selected={interests.includes(t)}
-              onPress={() => setInterests((cur) => toggle(cur, t))}
-            />
-          ))}
+            ))}
+          </View>
         </View>
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
         <Button
           label={
-            canContinue
-              ? isEdit
-                ? 'Save changes'
-                : 'Start planning'
-              : 'Pick a neighborhood'
+            canContinue ? (isEdit ? 'Save changes' : 'Start planning') : 'Pick a neighborhood'
           }
           onPress={onContinue}
           disabled={!canContinue}
           loading={saving}
         />
-        {isEdit ? (
-          <Button
-            label="Cancel"
-            variant="ghost"
-            onPress={exitEdit}
-            style={styles.cancelBtn}
-          />
-        ) : null}
+        {isEdit ? <Button label="Cancel" variant="ghost" onPress={exitEdit} /> : null}
       </View>
     </View>
   );
@@ -187,11 +186,40 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
-    paddingHorizontal: spacing.lg,
   },
   scroll: {
-    gap: spacing.md,
     paddingBottom: spacing.xl,
+  },
+  hero: {
+    height: 168,
+    overflow: 'hidden',
+  },
+  heroScrim: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  heroText: {
+    position: 'absolute',
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: spacing.lg,
+  },
+  heroEyebrow: {
+    color: colors.onArtMuted,
+    fontSize: font.size.xs,
+    fontWeight: font.weight.bold,
+    letterSpacing: 2.5,
+    marginBottom: 2,
+  },
+  heroTitle: {
+    color: colors.onArt,
+    fontFamily: font.family.display,
+    fontSize: font.size.hero,
+    letterSpacing: -0.8,
+  },
+  bodyPad: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    gap: spacing.md,
   },
   wrap: {
     flexDirection: 'row',
@@ -204,26 +232,33 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   stepBtn: {
-    width: 48,
-    height: 48,
+    width: 50,
+    height: 50,
     borderRadius: radius.md,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderStrong,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  stepSign: {
+    color: colors.text,
+    fontSize: font.size.xl,
+    fontWeight: font.weight.medium,
+  },
   stepValue: {
-    minWidth: 48,
-    alignItems: 'center',
+    minWidth: 40,
+    textAlign: 'center',
+    color: colors.text,
+    fontFamily: font.family.display,
+    fontSize: font.size.xxl,
   },
   footer: {
+    paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     gap: spacing.sm,
-  },
-  cancelBtn: {
-    marginTop: 0,
+    backgroundColor: colors.bg,
   },
 });
