@@ -1,0 +1,44 @@
+// =============================================================================
+// OutNYC — Repository interface (lib/storage/repository.ts)
+// =============================================================================
+// The persistence contract. Screens and the store depend ONLY on this interface
+// (never on a concrete impl), so a Supabase-backed Repository can be swapped in
+// later without touching any screen. Mirrors the SQL tables 1:1.
+// =============================================================================
+
+import type {
+  Availability,
+  BucketItem,
+  Feedback,
+  Plan,
+  Profile,
+} from '../types';
+
+export interface Repository {
+  // ---- profile (single row) ----
+  getProfile(): Promise<Profile | null>;
+  saveProfile(profile: Profile): Promise<void>;
+
+  // ---- availability (one row per date) ----
+  getAvailability(date: string): Promise<Availability | null>;
+  getAllAvailability(): Promise<Availability[]>;
+  saveAvailability(availability: Availability): Promise<void>;
+
+  // ---- bucket list ----
+  getBucketList(): Promise<BucketItem[]>;
+  saveBucketList(items: BucketItem[]): Promise<void>;
+
+  // ---- plans (keyed by date+window) ----
+  getPlan(date: string, windowStart: string, windowEnd: string): Promise<Plan | null>;
+  getPlansForDate(date: string): Promise<Plan[]>;
+  savePlan(plan: Plan): Promise<void>;
+  deletePlan(planId: string): Promise<void>;
+
+  // ---- feedback ----
+  getFeedback(planId: string): Promise<Feedback[]>;
+  addFeedback(feedback: Feedback): Promise<void>;
+
+  // ---- maintenance ----
+  /** Wipe all OutNYC data (used by "reset app" in Settings). */
+  clearAll(): Promise<void>;
+}

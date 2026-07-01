@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "OutNYC",
+    "slug": "outnyc",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "outnyc",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0B0B0F"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.outnyc.app"
+    },
+    "android": {
+      "package": "com.outnyc.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "color": "#E0613A"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
