@@ -125,24 +125,28 @@ export function isValidWindow(w: TimeWindow): boolean {
 export function normalizeTime(input: string): string | null {
   const trimmed = input.trim();
   if (trimmed === '') return null;
+  // Only digits and a single colon are meaningful; a stray '-' or '.' etc. is a
+  // typo, not a time — reject rather than silently stripping it (e.g. '-5').
+  if (/[^0-9:]/.test(trimmed)) return null;
+  if ((trimmed.match(/:/g) ?? []).length > 1) return null;
   let h: number;
   let m: number;
   if (trimmed.includes(':')) {
     const [hs, ms] = trimmed.split(':');
+    if (hs === '') return null;
     h = parseInt(hs, 10);
     m = parseInt(ms === '' ? '0' : ms, 10);
   } else {
-    const digits = trimmed.replace(/[^0-9]/g, '');
-    if (digits === '') return null;
-    if (digits.length <= 2) {
-      h = parseInt(digits, 10);
+    if (trimmed.length <= 2) {
+      h = parseInt(trimmed, 10);
       m = 0;
     } else {
-      h = parseInt(digits.slice(0, digits.length - 2), 10);
-      m = parseInt(digits.slice(-2), 10);
+      h = parseInt(trimmed.slice(0, trimmed.length - 2), 10);
+      m = parseInt(trimmed.slice(-2), 10);
     }
   }
-  if (Number.isNaN(h) || Number.isNaN(m) || h > 23 || m > 59) return null;
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  if (h < 0 || m < 0 || h > 23 || m > 59) return null;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 

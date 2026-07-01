@@ -47,6 +47,13 @@ export default function Onboarding() {
     return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
   }
 
+  // Leaving edit mode: pop back if possible, else fall back to Settings so the
+  // user can never get stranded (e.g. if this screen is the top of the stack).
+  function exitEdit() {
+    if (router.canGoBack()) router.back();
+    else router.replace('/settings');
+  }
+
   async function onContinue() {
     if (!canContinue) return;
     setSaving(true);
@@ -61,7 +68,7 @@ export default function Onboarding() {
           ? profile?.homeBase
           : neighborhoods[0],
       });
-      if (isEdit) router.back();
+      if (isEdit) exitEdit();
       else router.replace('/week');
     } finally {
       setSaving(false);
@@ -167,7 +174,7 @@ export default function Onboarding() {
           <Button
             label="Cancel"
             variant="ghost"
-            onPress={() => router.back()}
+            onPress={exitEdit}
             style={styles.cancelBtn}
           />
         ) : null}

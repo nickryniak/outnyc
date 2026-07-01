@@ -261,7 +261,17 @@ export const useStore = create<StoreState>((set, get) => ({
     if (!granted) return { scheduled: 0, reason: 'permission-denied' };
 
     const count = await schedulePlanNotifications(plan);
-    if (count === 0) return { scheduled: 0, reason: 'none-upcoming' };
+    if (count === 0) {
+      // schedulePlanNotifications already cancelled any prior nudges for this
+      // plan. If it was flagged locked (e.g. a re-lock where every stop is now
+      // in the past), clear that stale flag so state matches reality.
+      if (get().lockedPlanIds[planId]) {
+        const cleared = omit(get().lockedPlanIds, planId);
+        set({ lockedPlanIds: cleared });
+        await persistLocked(cleared);
+      }
+      return { scheduled: 0, reason: 'none-upcoming' };
+    }
 
     const nextLocked = { ...get().lockedPlanIds, [planId]: true };
     set({ lockedPlanIds: nextLocked });
@@ -330,17 +340,20 @@ async function runPlan(
       await cancelPlanNotifications(prior!.id);
     }
 
-    let nextLocked = get().lockedPlanIds;
-    if (invalidatesPrior && nextLocked[prior!.id]) {
-      nextLocked = omit(nextLocked, prior!.id);
-      await persistLocked(nextLocked);
-    }
-
+    // Derive lockedPlanIds from the FRESHEST state inside the updater so a
+    // concurrent lock/unlock (which may have run during the awaits above) is
+    // not clobbered by a stale snapshot.
     set((s) => ({
       plansByKey: { ...s.plansByKey, [key]: plan },
       planning: { ...s.planning, [key]: { status: 'idle' } },
-      lockedPlanIds: nextLocked,
+      lockedPlanIds:
+        invalidatesPrior && s.lockedPlanIds[prior!.id]
+          ? omit(s.lockedPlanIds, prior!.id)
+          : s.lockedPlanIds,
     }));
+    if (invalidatesPrior) {
+      await persistLocked(get().lockedPlanIds);
+    }
   } catch (err) {
     set((s) => ({
       planning: {
