@@ -11,7 +11,15 @@ import { Text } from 'react-native';
 import { colors, font } from '../../lib/theme';
 
 function TabIcon({ glyph, color }: { glyph: string; color: string }) {
-  return <Text style={{ color, fontSize: font.size.lg }}>{glyph}</Text>;
+  return (
+    <Text
+      accessibilityElementsHidden
+      importantForAccessibility="no"
+      style={{ color, fontSize: font.size.lg }}
+    >
+      {glyph}
+    </Text>
+  );
 }
 
 export default function TabsLayout() {
@@ -35,7 +43,7 @@ export default function TabsLayout() {
         options={{
           title: 'This week',
           tabBarLabel: 'Week',
-          tabBarIcon: ({ color }) => <TabIcon glyph="◴" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon glyph="▦" color={color} />,
         }}
       />
       <Tabs.Screen

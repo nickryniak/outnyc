@@ -9,7 +9,7 @@
 
 import * as Notifications from 'expo-notifications';
 
-import { nyDateTimeToLocalDate } from './time';
+import { format12h, nyDateTimeToLocalDate } from './time';
 import type { Plan, PlanItem } from './types';
 
 // Minutes before a stop's start to fire the nudge.
@@ -79,8 +79,8 @@ export async function schedulePlanNotifications(plan: Plan): Promise<number> {
         content: {
           title: `Up next: ${item.title}`,
           body: item.neighborhood
-            ? `${item.startTime} in ${item.neighborhood}`
-            : `Starts at ${item.startTime}`,
+            ? `${format12h(item.startTime)} in ${item.neighborhood}`
+            : `Starts at ${format12h(item.startTime)}`,
           data: { tag: planTag(plan.id), planItemId: item.id },
         },
         trigger: {

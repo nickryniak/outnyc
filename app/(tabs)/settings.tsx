@@ -8,6 +8,7 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   Body,
@@ -24,6 +25,7 @@ import { colors, radius, spacing } from '../../lib/theme';
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const loadStatus = useStore((s) => s.loadStatus);
   const profile = useStore((s) => s.profile);
   const resetApp = useStore((s) => s.resetApp);
@@ -61,7 +63,13 @@ export default function SettingsScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: insets.bottom + spacing.xxl },
+      ]}
+    >
       <Card>
         <Heading>Your defaults</Heading>
         <Body muted>Party of {profile.partySize}</Body>

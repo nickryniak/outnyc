@@ -7,6 +7,7 @@
 
 import { useRouter } from 'expo-router';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Body, Caption, EmptyView, Heading, LoadingView } from '../../components/ui';
 import { useStore } from '../../lib/store';
@@ -21,19 +22,29 @@ import type { Availability } from '../../lib/types';
 
 export default function WeekScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const loadStatus = useStore((s) => s.loadStatus);
   const availabilityByDate = useStore((s) => s.availabilityByDate);
+  const plansByKey = useStore((s) => s.plansByKey);
 
   if (loadStatus === 'loading' || loadStatus === 'idle') {
     return <LoadingView label="Loading your week…" />;
   }
 
   const days = nextDaysNY(7);
+  const plannedDates = new Set(
+    Object.values(plansByKey)
+      .filter((p) => p.items.length > 0)
+      .map((p) => p.date),
+  );
 
   return (
     <FlatList
       style={styles.list}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: insets.bottom + spacing.xxl },
+      ]}
       data={days}
       keyExtractor={(d) => d}
       ListHeaderComponent={
@@ -48,21 +59,31 @@ export default function WeekScreen() {
         const availability: Availability | undefined = availabilityByDate[date];
         const windowCount = availability?.windows.length ?? 0;
         const hasWindows = windowCount > 0;
+        const isPlanned = plannedDates.has(date);
 
         return (
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel={`${relativeDayLabel(date)}, ${
+              hasWindows ? `${windowCount} free-time window${windowCount === 1 ? '' : 's'}` : 'no free time set'
+            }`}
             onPress={() => router.push({ pathname: '/day/[date]', params: { date } })}
             style={({ pressed }) => [styles.dayCard, pressed && styles.pressed]}
           >
             <View style={styles.dayHeader}>
-              <View>
+              <View style={styles.dayTitle}>
                 <Heading>{relativeDayLabel(date)}</Heading>
                 <Caption muted>{monthDayLabel(date)}</Caption>
+                {isPlanned ? (
+                  <View style={styles.plannedTag}>
+                    <Caption>Planned ✓</Caption>
+                  </View>
+                ) : null}
               </View>
               {hasWindows ? (
                 <Pressable
                   accessibilityRole="button"
+                  accessibilityLabel={`Plan ${relativeDayLabel(date)}`}
                   onPress={() => router.push({ pathname: '/plan/[date]', params: { date } })}
                   style={({ pressed }) => [styles.planBtn, pressed && styles.pressed]}
                 >
@@ -70,7 +91,7 @@ export default function WeekScreen() {
                 </Pressable>
               ) : (
                 <View style={styles.addBtn}>
-                  <Caption muted>Set free time</Caption>
+                  <Caption>Set free time →</Caption>
                 </View>
               )}
             </View>
@@ -115,6 +136,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  dayTitle: {
+    gap: spacing.xs,
+    alignItems: 'flex-start',
+  },
+  plannedTag: {
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    backgroundColor: colors.secondarySoft,
+    borderWidth: 1,
+    borderColor: colors.success,
+  },
   planBtn: {
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
@@ -125,9 +159,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: colors.accentSoft,
   },
   windowList: {
     gap: spacing.xs,

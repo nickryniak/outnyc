@@ -214,6 +214,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.lg,
+    paddingBottom: spacing.xxl,
     gap: spacing.md,
   },
   windowCard: {

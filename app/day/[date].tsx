@@ -11,14 +11,22 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Text,
   TextInput,
   View,
 } from 'react-native';
 
 import { Body, Button, Caption, Heading } from '../../components/ui';
 import { useStore } from '../../lib/store';
-import { colors, radius, spacing } from '../../lib/theme';
-import { formatWindow, isValidWindow, relativeDayLabel } from '../../lib/time';
+import { colors, font, radius, spacing } from '../../lib/theme';
+import {
+  formatWindow,
+  isValidWindow,
+  normalizeTime,
+  relativeDayLabel,
+  toMinutes,
+  windowsOverlap,
+} from '../../lib/time';
 import type { TimeWindow } from '../../lib/types';
 
 // A couple of one-tap presets to make the common case fast.
@@ -56,29 +64,66 @@ export default function DayScreen() {
     );
   }
 
-  function addWindow(w: TimeWindow) {
+  /** Validate + de-dupe + reject overlaps, then add. Returns true on success. */
+  function addWindow(w: TimeWindow): boolean {
     if (!isValidWindow(w)) {
-      setError('Enter valid times as HH:MM, with start before end.');
-      return;
+      setError('Enter times as HH:MM, with start before end.');
+      return false;
     }
-    const dup = windows.some((x) => x.start === w.start && x.end === w.end);
-    if (dup) {
+    if (windows.some((x) => x.start === w.start && x.end === w.end)) {
       setError('That window is already added.');
-      return;
+      return false;
+    }
+    if (windows.some((x) => windowsOverlap(x, w))) {
+      setError('That overlaps a window you already added.');
+      return false;
     }
     setError(null);
     setWindows((cur) => [...cur, w].sort((a, b) => a.start.localeCompare(b.start)));
+    return true;
+  }
+
+  /** Add from the two text fields, normalizing loose input like "1800". */
+  function addTyped() {
+    const s = normalizeTime(start);
+    const e = normalizeTime(end);
+    if (!s || !e) {
+      setError('Enter times as HH:MM (e.g. 18:00).');
+      return;
+    }
+    if (addWindow({ start: s, end: e })) {
+      setStart(s);
+      setEnd(e);
+    }
   }
 
   function removeWindow(index: number) {
+    setError(null);
     setWindows((cur) => cur.filter((_, i) => i !== index));
   }
 
+  /** A valid, non-duplicate, non-overlapping window still sitting in the inputs. */
+  function pendingWindow(): TimeWindow | null {
+    const s = normalizeTime(start);
+    const e = normalizeTime(end);
+    if (!s || !e || toMinutes(s) >= toMinutes(e)) return null;
+    const w = { start: s, end: e };
+    if (windows.some((x) => x.start === w.start && x.end === w.end)) return null;
+    if (windows.some((x) => windowsOverlap(x, w))) return null;
+    return w;
+  }
+
   async function onSave(thenPlan: boolean) {
+    // Don't silently drop a valid window the user typed but didn't tap "Add".
+    const pending = pendingWindow();
+    const finalWindows = pending
+      ? [...windows, pending].sort((a, b) => a.start.localeCompare(b.start))
+      : windows;
+
     setSaving(true);
     try {
-      await setAvailability(date, windows);
-      if (thenPlan && windows.length > 0) {
+      await setAvailability(date, finalWindows);
+      if (thenPlan && finalWindows.length > 0) {
         router.replace({ pathname: '/plan/[date]', params: { date } });
       } else {
         router.back();
@@ -104,6 +149,7 @@ export default function DayScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Remove window"
+                hitSlop={8}
                 onPress={() => removeWindow(i)}
                 style={styles.remove}
               >
@@ -119,25 +165,35 @@ export default function DayScreen() {
         <TextInput
           value={start}
           onChangeText={setStart}
+          onEndEditing={() => {
+            const n = normalizeTime(start);
+            if (n) setStart(n);
+          }}
           placeholder="18:00"
           placeholderTextColor={colors.textFaint}
           style={styles.timeInput}
           keyboardType="numbers-and-punctuation"
           maxLength={5}
+          accessibilityLabel="Start time"
         />
         <Body muted>to</Body>
         <TextInput
           value={end}
           onChangeText={setEnd}
+          onEndEditing={() => {
+            const n = normalizeTime(end);
+            if (n) setEnd(n);
+          }}
           placeholder="23:00"
           placeholderTextColor={colors.textFaint}
           style={styles.timeInput}
           keyboardType="numbers-and-punctuation"
           maxLength={5}
+          accessibilityLabel="End time"
         />
-        <Button label="Add" onPress={() => addWindow({ start, end })} />
+        <Button label="Add" onPress={addTyped} />
       </View>
-      {error ? <Caption muted>{error}</Caption> : null}
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
       <Caption muted>Quick presets</Caption>
       <View style={styles.presets}>
@@ -146,7 +202,7 @@ export default function DayScreen() {
             key={`${p.start}-${p.end}`}
             accessibilityRole="button"
             onPress={() => addWindow(p)}
-            style={styles.preset}
+            style={({ pressed }) => [styles.preset, pressed && styles.pressed]}
           >
             <Caption>{formatWindow(p)}</Caption>
           </Pressable>
@@ -155,7 +211,9 @@ export default function DayScreen() {
 
       <View style={styles.actions}>
         <Button
-          label={windows.length > 0 ? 'Save & plan this day' : 'Save'}
+          label={
+            windows.length > 0 || pendingWindow() ? 'Save & plan this day' : 'Save'
+          }
           onPress={() => onSave(true)}
           loading={saving}
         />
@@ -172,7 +230,15 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.lg,
+    paddingBottom: spacing.xxl,
     gap: spacing.md,
+  },
+  errorText: {
+    color: colors.danger,
+    fontSize: font.size.sm,
+  },
+  pressed: {
+    opacity: 0.7,
   },
   windowList: {
     gap: spacing.sm,

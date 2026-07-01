@@ -6,12 +6,14 @@
 
 import { useMemo, useState } from 'react';
 import {
+  Alert,
   FlatList,
   Pressable,
   StyleSheet,
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   Body,
@@ -26,6 +28,7 @@ import { colors, radius, spacing } from '../../lib/theme';
 import type { BucketItem } from '../../lib/types';
 
 export default function BucketScreen() {
+  const insets = useSafeAreaInsets();
   const loadStatus = useStore((s) => s.loadStatus);
   const bucketList = useStore((s) => s.bucketList);
   const addBucketItem = useStore((s) => s.addBucketItem);
@@ -33,6 +36,13 @@ export default function BucketScreen() {
   const removeBucketItem = useStore((s) => s.removeBucketItem);
 
   const [draft, setDraft] = useState('');
+
+  function confirmRemove(item: BucketItem) {
+    Alert.alert(`Remove “${item.title}”?`, 'This deletes it from your bucket list.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => void removeBucketItem(item.id) },
+    ]);
+  }
 
   const { open, done } = useMemo(() => {
     const sorted = [...bucketList].sort((a, b) => a.sortOrder - b.sortOrder);
@@ -70,9 +80,13 @@ export default function BucketScreen() {
 
       <FlatList
         style={styles.list}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: insets.bottom + spacing.xxl },
+        ]}
         data={open}
         keyExtractor={(item) => item.id}
+        keyboardShouldPersistTaps="handled"
         ListHeaderComponent={<Heading>Open</Heading>}
         ListEmptyComponent={
           <EmptyView
@@ -84,7 +98,7 @@ export default function BucketScreen() {
           <BucketRow
             item={item}
             onToggle={() => void toggleBucketDone(item.id)}
-            onRemove={() => void removeBucketItem(item.id)}
+            onRemove={() => confirmRemove(item)}
           />
         )}
         ListFooterComponent={
@@ -96,7 +110,7 @@ export default function BucketScreen() {
                   key={item.id}
                   item={item}
                   onToggle={() => void toggleBucketDone(item.id)}
-                  onRemove={() => void removeBucketItem(item.id)}
+                  onRemove={() => confirmRemove(item)}
                 />
               ))}
             </View>
@@ -142,6 +156,7 @@ function BucketRow({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Remove ${item.title}`}
+        hitSlop={10}
         onPress={onRemove}
         style={styles.remove}
       >

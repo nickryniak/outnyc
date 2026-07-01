@@ -118,6 +118,39 @@ export function isValidWindow(w: TimeWindow): boolean {
   return isValidTime(w.start) && isValidTime(w.end) && toMinutes(w.start) < toMinutes(w.end);
 }
 
+/**
+ * Normalize loose time entry to 'HH:MM', or null if it can't be understood.
+ * Accepts '1800', '930', '6:00', '18:0', '6' (=> 06:00). Rejects out-of-range.
+ */
+export function normalizeTime(input: string): string | null {
+  const trimmed = input.trim();
+  if (trimmed === '') return null;
+  let h: number;
+  let m: number;
+  if (trimmed.includes(':')) {
+    const [hs, ms] = trimmed.split(':');
+    h = parseInt(hs, 10);
+    m = parseInt(ms === '' ? '0' : ms, 10);
+  } else {
+    const digits = trimmed.replace(/[^0-9]/g, '');
+    if (digits === '') return null;
+    if (digits.length <= 2) {
+      h = parseInt(digits, 10);
+      m = 0;
+    } else {
+      h = parseInt(digits.slice(0, digits.length - 2), 10);
+      m = parseInt(digits.slice(-2), 10);
+    }
+  }
+  if (Number.isNaN(h) || Number.isNaN(m) || h > 23 || m > 59) return null;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/** True if two windows share any minute. */
+export function windowsOverlap(a: TimeWindow, b: TimeWindow): boolean {
+  return toMinutes(a.start) < toMinutes(b.end) && toMinutes(b.start) < toMinutes(a.end);
+}
+
 /** Display a window as '6:00 PM – 11:00 PM'. */
 export function formatWindow(w: TimeWindow): string {
   return `${format12h(w.start)} – ${format12h(w.end)}`;
