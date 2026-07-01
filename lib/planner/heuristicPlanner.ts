@@ -159,7 +159,7 @@ export class HeuristicPlanner implements Planner {
     const winStart = toMinutes(req.window.start);
     const winEnd = toMinutes(req.window.end);
     const totalMin = windowMinutes(req.window);
-    const seed = hash(`${req.date}:${req.modifier ?? 'default'}`);
+    const seed = hash(`${req.date}:${req.modifier ?? 'default'}:${req.nonce ?? 0}`);
 
     // The "cheaper" modifier tightens the ceiling so pricey stops (including
     // fixed events) drop out, not just get down-weighted.

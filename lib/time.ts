@@ -85,6 +85,31 @@ export function isPast(ymd: string): boolean {
   return ymd < todayNY();
 }
 
+/** The Monday (week start) on or before `ymd`, as 'YYYY-MM-DD'. */
+export function mondayOf(ymd: string): string {
+  const anchor = ymdToAnchorDate(ymd);
+  const dow = anchor.getUTCDay(); // 0=Sun..6=Sat
+  const sinceMonday = (dow + 6) % 7; // Mon=0 … Sun=6
+  return addDays(ymd, -sinceMonday);
+}
+
+/** The 7 dates Mon..Sun of the week containing `mondayYmd` (pass a Monday). */
+export function weekDates(mondayYmd: string): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < 7; i += 1) out.push(addDays(mondayYmd, i));
+  return out;
+}
+
+/** A range label like 'Jul 1 – Jul 7' for the week starting at `mondayYmd`. */
+export function weekRangeLabel(mondayYmd: string): string {
+  return `${monthDayLabel(mondayYmd)} – ${monthDayLabel(addDays(mondayYmd, 6))}`;
+}
+
+/** Single-letter weekday for a compact calendar header (M T W T F S S). */
+export function weekdayInitial(ymd: string): string {
+  return weekdayLabel(ymd).slice(0, 1);
+}
+
 // ---- 'HH:MM' helpers --------------------------------------------------------
 
 /** Minutes since midnight for an 'HH:MM' string. */

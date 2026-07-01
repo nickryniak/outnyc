@@ -27,6 +27,8 @@ export interface PlanRequest {
   events: Candidate[];
   places: Candidate[];
   modifier?: PlanModifier;
+  /** Bumped on each explicit reshuffle so the same inputs yield a fresh plan. */
+  nonce?: number;
 }
 
 export interface Planner {

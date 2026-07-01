@@ -41,6 +41,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="week"
         options={{
+          headerShown: false,
           title: 'This week',
           tabBarLabel: 'Week',
           tabBarIcon: ({ color }) => <TabIcon glyph="▦" color={color} />,

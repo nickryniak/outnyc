@@ -70,7 +70,11 @@ interface StoreState {
   removeBucketItem(id: string): Promise<void>;
 
   generatePlan(date: string, window: TimeWindow, modifier?: PlanModifier): Promise<void>;
-  reshufflePlan(date: string, window: TimeWindow, modifier: PlanModifier): Promise<void>;
+  reshufflePlan(date: string, window: TimeWindow, modifier?: PlanModifier): Promise<void>;
+  /** Generate a plan for every window of every given date that has free time. */
+  generateWeek(dates: string[]): Promise<void>;
+  /** Reshuffle every window of every given date (fresh variation each call). */
+  reshuffleWeek(dates: string[], modifier?: PlanModifier): Promise<void>;
   lockInPlan(planId: string): Promise<LockResult>;
   unlockPlan(planId: string): Promise<void>;
 }
@@ -85,6 +89,9 @@ function genId(prefix: string): string {
 
 /** Re-entrancy guard so concurrent bootstrap callers don't double-seed. */
 let booting = false;
+
+/** Per-window reshuffle counter, mixed into the planner seed for fresh variety. */
+const nonceByKey: Record<string, number> = {};
 
 type SetFn = (
   partial: Partial<StoreState> | ((s: StoreState) => Partial<StoreState>),
@@ -203,13 +210,15 @@ export const useStore = create<StoreState>((set, get) => ({
   async setAvailability(date, windows) {
     const valid = windows.filter(isValidWindow);
     const availability: Availability = { date, windows: valid };
-    await repository.saveAvailability(availability);
+    // Update state optimistically first so rapid successive edits (e.g. painting
+    // the calendar) always read the freshest availability, then persist.
     set((s) => {
       const next = { ...s.availabilityByDate };
       if (valid.length === 0) delete next[date];
       else next[date] = availability;
       return { availabilityByDate: next };
     });
+    await repository.saveAvailability(availability);
   },
 
   async addBucketItem(input) {
@@ -248,7 +257,32 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   async reshufflePlan(date, window, modifier) {
+    const key = planKey(date, window);
+    nonceByKey[key] = (nonceByKey[key] ?? 0) + 1;
     return runPlan(set, get, date, window, modifier);
+  },
+
+  async generateWeek(dates) {
+    for (const date of dates) {
+      const avail = get().availabilityByDate[date];
+      if (!avail) continue;
+      for (const w of avail.windows) {
+        if (get().plansByKey[planKey(date, w)]) continue; // already planned
+        await runPlan(set, get, date, w, undefined);
+      }
+    }
+  },
+
+  async reshuffleWeek(dates, modifier) {
+    for (const date of dates) {
+      const avail = get().availabilityByDate[date];
+      if (!avail) continue;
+      for (const w of avail.windows) {
+        const key = planKey(date, w);
+        nonceByKey[key] = (nonceByKey[key] ?? 0) + 1;
+        await runPlan(set, get, date, w, modifier ?? get().plansByKey[key]?.modifier);
+      }
+    }
   },
 
   async lockInPlan(planId): Promise<LockResult> {
@@ -328,6 +362,7 @@ async function runPlan(
       events: eventsRes.candidates,
       places: placesRes.candidates,
       modifier,
+      nonce: nonceByKey[key] ?? 0,
     });
 
     await repository.savePlan(plan);

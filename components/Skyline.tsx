@@ -1,9 +1,10 @@
 // =============================================================================
 // OutNYC — illustrated NYC skyline (components/Skyline.tsx)
 // =============================================================================
-// A vector "sunset over Manhattan" hero: a time-of-day gradient sky, a sun/moon,
-// a hazy far skyline and a crisp near skyline with a spire and lit windows. Pure
-// react-native-svg, so it's crisp at any size, themeable, and needs no assets.
+// A vector "sunset over Manhattan" hero with RECOGNIZABLE landmarks — One World
+// Trade Center's tapered spire, the Empire State Building's stepped mast, a
+// Chrysler-style crown — plus generic infill, lit windows, and a time-of-day
+// gradient sky. Pure react-native-svg: crisp at any size, themeable, no assets.
 // =============================================================================
 
 import { View, ViewStyle } from 'react-native';
@@ -11,6 +12,7 @@ import Svg, {
   Circle,
   Defs,
   G,
+  Line,
   LinearGradient,
   Polygon,
   Rect,
@@ -21,46 +23,36 @@ import { sky, TimeOfDay } from '../lib/theme';
 
 const VB_W = 400;
 const VB_H = 220;
-const GROUND = 220;
+const G0 = 220; // ground line
 
-// Deterministic near-skyline: [x, width, height] (height from the ground up).
-const NEAR: [number, number, number][] = [
-  [-4, 34, 78],
-  [30, 26, 116],
-  [56, 30, 64],
-  [86, 22, 150],
-  [108, 34, 96],
-  [150, 40, 132], // stepped tower
-  [196, 20, 88],
-  [214, 26, 168], // tall
-  [246, 30, 104],
-  [286, 24, 140],
-  [312, 40, 74],
-  [350, 30, 122],
-  [382, 30, 92],
+// Generic infill buildings: [x, width, height-from-ground].
+const GENERIC: [number, number, number][] = [
+  [-6, 30, 70],
+  [58, 22, 96],
+  [82, 18, 66],
+  [102, 28, 112],
+  [178, 16, 82],
+  [230, 28, 92],
+  [262, 22, 136],
+  [292, 34, 78],
+  [328, 26, 118],
+  [360, 30, 88],
+  [390, 18, 62],
 ];
 
-// Far, hazier skyline behind it.
 const FAR: [number, number, number][] = [
-  [-6, 40, 54],
-  [40, 34, 82],
-  [82, 46, 60],
-  [130, 30, 96],
-  [168, 52, 70],
-  [224, 34, 100],
-  [268, 44, 62],
-  [318, 40, 88],
-  [364, 44, 58],
+  [-6, 40, 54], [40, 34, 82], [82, 46, 60], [130, 30, 96],
+  [168, 52, 70], [224, 34, 100], [268, 44, 62], [318, 40, 88], [364, 44, 58],
 ];
 
-// A few lit windows (x,y) in viewBox space, shown for evening/night.
+// Lit windows (x,y) for evening/night.
 const WINDOWS: [number, number][] = [
-  [40, 130], [45, 145], [40, 160], [50, 130],
-  [92, 100], [98, 118], [92, 136], [98, 154], [92, 172],
-  [158, 110], [166, 128], [174, 110], [158, 146], [174, 146],
-  [220, 80], [220, 100], [228, 90], [220, 120], [228, 130], [220, 150],
-  [292, 110], [300, 128], [292, 146], [300, 164],
-  [356, 120], [364, 138], [356, 156],
+  [64, 140], [70, 156], [64, 172],
+  [108, 120], [116, 138], [108, 156], [116, 174],
+  [148, 116], [158, 134], [168, 116], [148, 150], [168, 150], [158, 168],
+  [206, 122], [214, 140], [206, 158], [214, 176],
+  [268, 100], [268, 120], [276, 110], [268, 140], [276, 150],
+  [334, 120], [342, 138], [334, 156],
 ];
 
 export function Skyline({
@@ -77,22 +69,15 @@ export function Skyline({
   const p = sky[variant];
   const showWindows = variant === 'evening' || variant === 'night';
   const showStars = variant === 'night';
-  const sunY = variant === 'evening' ? 128 : variant === 'night' ? 54 : 70;
-  const sunX = variant === 'evening' ? 300 : 96;
+  const sunY = variant === 'evening' ? 132 : variant === 'night' ? 52 : 68;
+  const sunX = variant === 'evening' ? 322 : 60;
+  const B = p.building;
 
   return (
     <View
-      style={[
-        { height, width: '100%', overflow: 'hidden', borderRadius: rounded },
-        style,
-      ]}
+      style={[{ height, width: '100%', overflow: 'hidden', borderRadius: rounded }, style]}
     >
-      <Svg
-        width="100%"
-        height="100%"
-        viewBox={`0 0 ${VB_W} ${VB_H}`}
-        preserveAspectRatio="xMidYMax slice"
-      >
+      <Svg width="100%" height="100%" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="xMidYMax slice">
         <Defs>
           <LinearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor={p.top} />
@@ -105,44 +90,53 @@ export function Skyline({
           </LinearGradient>
         </Defs>
 
-        {/* Sky */}
         <Rect x="0" y="0" width={VB_W} height={VB_H} fill="url(#sky)" />
 
-        {/* Stars (night) */}
         {showStars
-          ? [
-              [30, 30], [80, 46], [140, 24], [200, 40], [260, 22], [330, 38], [370, 26],
-              [110, 60], [240, 58], [300, 48],
-            ].map(([sx, sy], i) => (
-              <Circle key={`st-${i}`} cx={sx} cy={sy} r={i % 3 === 0 ? 1.6 : 1} fill={p.ink} opacity={0.85} />
-            ))
+          ? [[30, 30], [80, 46], [140, 24], [200, 40], [260, 22], [330, 38], [370, 26], [110, 60], [240, 58], [300, 48]].map(
+              ([sx, sy], i) => (
+                <Circle key={`st-${i}`} cx={sx} cy={sy} r={i % 3 === 0 ? 1.6 : 1} fill={p.ink} opacity={0.85} />
+              ),
+            )
           : null}
 
-        {/* Sun / moon */}
         <Circle cx={sunX} cy={sunY} r={variant === 'night' ? 16 : 26} fill={p.sun} opacity={variant === 'night' ? 0.9 : 0.95} />
-        {/* Horizon glow */}
-        <Rect x="0" y={GROUND - 120} width={VB_W} height="120" fill="url(#glow)" />
+        <Rect x="0" y={G0 - 120} width={VB_W} height="120" fill="url(#glow)" />
 
-        {/* Far skyline */}
-        <G opacity={0.55}>
+        {/* Far hazy skyline */}
+        <G opacity={0.5}>
           {FAR.map(([x, w, h], i) => (
-            <Rect key={`f-${i}`} x={x} y={GROUND - h} width={w} height={h} fill={p.buildingFar} />
+            <Rect key={`f-${i}`} x={x} y={G0 - h} width={w} height={h} fill={p.buildingFar} />
           ))}
         </G>
 
-        {/* Near skyline */}
+        {/* Generic near infill */}
         <G>
-          {NEAR.map(([x, w, h], i) => (
-            <Rect key={`n-${i}`} x={x} y={GROUND - h} width={w} height={h} fill={p.building} />
+          {GENERIC.map(([x, w, h], i) => (
+            <Rect key={`n-${i}`} x={x} y={G0 - h} width={w} height={h} fill={B} />
           ))}
-          {/* Spire on the tall tower at x=214,w=26,h=168 */}
-          <Polygon
-            points={`${214 + 13},${GROUND - 168 - 26} ${214 + 6},${GROUND - 168} ${214 + 20},${GROUND - 168}`}
-            fill={p.building}
-          />
-          <Rect x={214 + 12} y={GROUND - 168 - 40} width="2" height="20" fill={p.building} />
-          {/* Water-tower detail on the stepped tower */}
-          <Rect x={150 + 14} y={GROUND - 132 - 12} width="12" height="12" fill={p.building} />
+        </G>
+
+        {/* --- One World Trade Center: tapered tower + long spire (x~24-54) --- */}
+        <G>
+          <Polygon points={`24,${G0} 54,${G0} 46,${G0 - 158} 32,${G0 - 158}`} fill={B} />
+          <Line x1="39" y1={G0 - 158} x2="39" y2={G0 - 192} stroke={B} strokeWidth="2.5" />
+        </G>
+
+        {/* --- Empire State Building: stepped setbacks + mast + antenna (x~140) --- */}
+        <G>
+          <Rect x="140" y={G0 - 120} width="34" height="120" fill={B} />
+          <Rect x="148" y={G0 - 144} width="18" height="24" fill={B} />
+          <Rect x="153" y={G0 - 160} width="8" height="16" fill={B} />
+          <Line x1="157" y1={G0 - 160} x2="157" y2={G0 - 182} stroke={B} strokeWidth="2" />
+        </G>
+
+        {/* --- Chrysler-style crown: body + tiered triangular top + spire (x~200) --- */}
+        <G>
+          <Rect x="200" y={G0 - 112} width="24" height="112" fill={B} />
+          <Polygon points={`200,${G0 - 112} 224,${G0 - 112} 217,${G0 - 132} 207,${G0 - 132}`} fill={B} />
+          <Polygon points={`205,${G0 - 132} 219,${G0 - 132} 212,${G0 - 150}`} fill={B} />
+          <Line x1="212" y1={G0 - 150} x2="212" y2={G0 - 166} stroke={B} strokeWidth="1.6" />
         </G>
 
         {/* Lit windows */}
