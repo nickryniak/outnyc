@@ -1,7 +1,8 @@
 // =============================================================================
 // OutNYC — shared UI primitives (components/ui.tsx)
 // =============================================================================
-// Themed building blocks. No hardcoded hex — all tokens come from lib/theme.
+// Editorial & warm. Serif display faces (Fraunces) for Title/Heading; the system
+// sans for body/UI. No hardcoded hex — all tokens come from lib/theme.
 // =============================================================================
 
 import { ReactNode } from 'react';
@@ -18,20 +19,39 @@ import { colors, font, radius, spacing } from '../lib/theme';
 
 // ---- Text ------------------------------------------------------------------
 
-export function Title({ children }: { children: ReactNode }) {
-  return <Text style={styles.title}>{children}</Text>;
+export function Title({ children, style }: { children: ReactNode; style?: object }) {
+  return <Text style={[styles.title, style]}>{children}</Text>;
 }
 
-export function Heading({ children }: { children: ReactNode }) {
-  return <Text style={styles.heading}>{children}</Text>;
+export function Heading({ children, style }: { children: ReactNode; style?: object }) {
+  return <Text style={[styles.heading, style]}>{children}</Text>;
+}
+
+/** Small uppercase kicker above a heading — the editorial "eyebrow". */
+export function Eyebrow({ children, tone }: { children: ReactNode; tone?: 'accent' | 'muted' }) {
+  return (
+    <Text style={[styles.eyebrow, tone === 'accent' && { color: colors.accent }]}>{children}</Text>
+  );
 }
 
 export function Body({ children, muted }: { children: ReactNode; muted?: boolean }) {
-  return <Text style={[styles.body, muted && styles.bodyMuted]}>{children}</Text>;
+  return <Text style={[styles.body, muted && styles.textMuted]}>{children}</Text>;
 }
 
 export function Caption({ children, muted }: { children: ReactNode; muted?: boolean }) {
-  return <Text style={[styles.caption, muted && styles.bodyMuted]}>{children}</Text>;
+  return <Text style={[styles.caption, muted && styles.textMuted]}>{children}</Text>;
+}
+
+/** A thin warm hairline, optionally with a centered label. */
+export function Rule({ label }: { label?: string }) {
+  if (!label) return <View style={styles.rule} />;
+  return (
+    <View style={styles.ruleRow}>
+      <View style={styles.ruleLine} />
+      <Text style={styles.ruleLabel}>{label}</Text>
+      <View style={styles.ruleLine} />
+    </View>
+  );
 }
 
 // ---- Button ----------------------------------------------------------------
@@ -71,7 +91,7 @@ export function Button({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={variant === 'primary' ? colors.bg : colors.text} />
+        <ActivityIndicator color={variant === 'primary' ? colors.onArt : colors.accent} />
       ) : (
         <Text
           style={[
@@ -104,9 +124,7 @@ export function Chip({
       onPress={onPress}
       style={[styles.chip, selected && styles.chipSelected]}
     >
-      <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]}>
-        {label}
-      </Text>
+      <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]}>{label}</Text>
     </Pressable>
   );
 }
@@ -146,13 +164,7 @@ export function EmptyView({
   );
 }
 
-export function ErrorView({
-  message,
-  onRetry,
-}: {
-  message: string;
-  onRetry?: () => void;
-}) {
+export function ErrorView({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
     <View style={styles.stateView}>
       <Heading>Something went wrong</Heading>
@@ -165,27 +177,60 @@ export function ErrorView({
 const styles = StyleSheet.create({
   title: {
     color: colors.text,
+    fontFamily: font.family.display,
     fontSize: font.size.display,
-    fontWeight: font.weight.bold,
+    letterSpacing: -0.5,
+    lineHeight: font.size.display + 4,
   },
   heading: {
     color: colors.text,
+    fontFamily: font.family.heading,
     fontSize: font.size.xl,
+    letterSpacing: -0.2,
+  },
+  eyebrow: {
+    color: colors.textMuted,
+    fontSize: font.size.xs,
     fontWeight: font.weight.semibold,
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
   },
   body: {
     color: colors.text,
     fontSize: font.size.md,
+    lineHeight: 23,
   },
-  bodyMuted: {
+  textMuted: {
     color: colors.textMuted,
   },
   caption: {
     color: colors.text,
     fontSize: font.size.sm,
+    lineHeight: 19,
+  },
+  rule: {
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  ruleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  ruleLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  ruleLabel: {
+    color: colors.textFaint,
+    fontSize: font.size.xs,
+    fontWeight: font.weight.semibold,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
   },
   btn: {
-    minHeight: 48,
+    minHeight: 52,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.md,
     alignItems: 'center',
@@ -195,26 +240,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
   },
   btnSecondary: {
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: colors.transparent,
+    borderWidth: 1.5,
+    borderColor: colors.borderStrong,
   },
   btnGhost: {
     backgroundColor: colors.transparent,
   },
   btnDisabled: {
-    opacity: 0.5,
+    opacity: 0.45,
   },
   btnPressed: {
-    opacity: 0.8,
+    opacity: 0.85,
   },
   btnLabel: {
     color: colors.text,
     fontSize: font.size.md,
     fontWeight: font.weight.semibold,
+    letterSpacing: 0.2,
   },
   btnLabelPrimary: {
-    color: colors.bg,
+    color: colors.onArt,
   },
   btnLabelGhost: {
     color: colors.accent,
@@ -223,7 +269,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -238,6 +284,7 @@ const styles = StyleSheet.create({
   },
   chipLabelSelected: {
     color: colors.accent,
+    fontWeight: font.weight.semibold,
   },
   card: {
     backgroundColor: colors.surface,

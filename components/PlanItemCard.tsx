@@ -1,20 +1,19 @@
 // =============================================================================
 // OutNYC — plan item card (components/PlanItemCard.tsx)
 // =============================================================================
-// Renders one ordered stop in an itinerary, with a kind-colored rail, time,
-// price tier, and a "Book"/"Tickets" deep-link-out button (never auto-books).
+// One stop in the itinerary, styled like a printed city-guide entry: a serif
+// numeral, the time and kind, a serif title, and Book/Tickets/Directions
+// deep-links. Walk/break stops render as a slim connector between entries.
 // =============================================================================
 
-import { Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, kindColor, radius, spacing } from '../lib/theme';
-import { format12h } from '../lib/time';
+import { colors, font, kindColor, radius, spacing } from '../lib/theme';
+import { format12h, toMinutes } from '../lib/time';
 import type { PlanItem, PriceTier } from '../lib/types';
-import { Body, Caption } from './ui';
 
 function priceLabel(tier?: PriceTier): string {
-  if (!tier) return '';
-  return '$'.repeat(tier);
+  return tier ? '$'.repeat(tier) : '';
 }
 
 function kindLabel(kind: PlanItem['kind']): string {
@@ -24,9 +23,9 @@ function kindLabel(kind: PlanItem['kind']): string {
     case 'bar':
       return 'Drink';
     case 'event':
-      return 'Event';
+      return 'Live';
     case 'activity':
-      return 'Activity';
+      return 'Do';
     case 'bucket':
       return 'Bucket list';
     case 'walk':
@@ -40,68 +39,76 @@ function kindLabel(kind: PlanItem['kind']): string {
 
 async function openExternal(url: string): Promise<void> {
   try {
-    const can = await Linking.canOpenURL(url);
-    if (can) await Linking.openURL(url);
-    else await Linking.openURL(url);
+    await Linking.openURL(url);
   } catch (err) {
     console.warn('[link] failed to open url:', err);
   }
 }
 
-/** Apple Maps URL for a stop, from coordinates or address. Null if neither. */
 function mapsUrl(item: PlanItem): string | null {
   const label = encodeURIComponent(item.title);
   if (item.lat != null && item.lng != null) {
     return `https://maps.apple.com/?q=${label}&ll=${item.lat},${item.lng}`;
   }
-  if (item.address) {
-    return `https://maps.apple.com/?q=${encodeURIComponent(item.address)}`;
-  }
+  if (item.address) return `https://maps.apple.com/?q=${encodeURIComponent(item.address)}`;
   return null;
 }
 
-export function PlanItemCard({ item }: { item: PlanItem }) {
-  const rail = kindColor(item.kind);
+export function PlanItemCard({ item, stopNumber }: { item: PlanItem; stopNumber?: number }) {
   const isConnector = item.kind === 'walk' || item.kind === 'break';
+
+  if (isConnector) {
+    const mins = Math.max(0, toMinutes(item.endTime) - toMinutes(item.startTime));
+    const to = item.neighborhood ? `to ${item.neighborhood}` : '';
+    return (
+      <View style={styles.connector}>
+        <View style={styles.connectorLine} />
+        <Text style={styles.connectorText}>
+          {item.kind === 'walk' ? '↳ walk' : '↳ break'} {mins ? `· ${mins} min ` : ''}
+          {to}
+        </Text>
+      </View>
+    );
+  }
+
+  const tint = kindColor(item.kind);
   const directions = mapsUrl(item);
 
   return (
-    <View style={[styles.row, isConnector && styles.rowConnector]}>
-      <View style={[styles.rail, { backgroundColor: rail }]} />
-      <View style={styles.content}>
-        <View style={styles.headerRow}>
-          <Caption muted>
+    <View style={styles.stop}>
+      <View style={styles.numeralCol}>
+        <View style={[styles.numeral, { borderColor: tint }]}>
+          <Text style={[styles.numeralText, { color: tint }]}>{stopNumber ?? '•'}</Text>
+        </View>
+      </View>
+
+      <View style={styles.body}>
+        <View style={styles.metaTop}>
+          <Text style={styles.time}>
             {format12h(item.startTime)} – {format12h(item.endTime)}
-          </Caption>
-          <View style={[styles.kindTag, { borderColor: rail }]}>
-            <Caption muted>{kindLabel(item.kind)}</Caption>
-          </View>
+          </Text>
+          <Text style={[styles.kind, { color: tint }]}>{kindLabel(item.kind).toUpperCase()}</Text>
         </View>
 
-        {isConnector ? (
-          <Caption muted>{item.title}</Caption>
-        ) : (
-          <Body>{item.title}</Body>
-        )}
+        <Text style={styles.title}>{item.title}</Text>
 
-        <View style={styles.metaRow}>
-          {item.neighborhood ? <Caption muted>{item.neighborhood}</Caption> : null}
-          {item.priceTier ? (
-            <Caption muted>· {priceLabel(item.priceTier)}</Caption>
-          ) : null}
-          {item.bucketItemId ? <Caption muted>· from your list</Caption> : null}
-        </View>
+        <Text style={styles.sub}>
+          {[item.neighborhood, priceLabel(item.priceTier)].filter(Boolean).join('  ·  ')}
+          {item.bucketItemId ? '  ·  from your list' : ''}
+        </Text>
 
-        {!isConnector && (item.bookingUrl || directions) ? (
-          <View style={styles.actionRow}>
+        {item.bookingUrl || directions ? (
+          <View style={styles.actions}>
             {item.bookingUrl ? (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={item.kind === 'event' ? 'Get tickets' : 'Book'}
                 onPress={() => openExternal(item.bookingUrl as string)}
-                style={({ pressed }) => [styles.bookBtn, pressed && styles.bookBtnPressed]}
+                style={({ pressed }) => [styles.actionPrimary, pressed && styles.pressed]}
               >
-                <Caption>{item.kind === 'event' ? 'Tickets ↗' : 'Book ↗'}</Caption>
+                <Text style={styles.actionPrimaryText}>
+                  {item.kind === 'event' ? 'Tickets ↗' : 'Book ↗'}
+                </Text>
               </Pressable>
             ) : null}
             {directions ? (
@@ -109,9 +116,9 @@ export function PlanItemCard({ item }: { item: PlanItem }) {
                 accessibilityRole="button"
                 accessibilityLabel={`Directions to ${item.title}`}
                 onPress={() => openExternal(directions)}
-                style={({ pressed }) => [styles.dirBtn, pressed && styles.bookBtnPressed]}
+                style={({ pressed }) => [styles.actionGhost, pressed && styles.pressed]}
               >
-                <Caption muted>Directions ↗</Caption>
+                <Text style={styles.actionGhostText}>Directions ↗</Text>
               </Pressable>
             ) : null}
           </View>
@@ -122,65 +129,107 @@ export function PlanItemCard({ item }: { item: PlanItem }) {
 }
 
 const styles = StyleSheet.create({
-  row: {
+  stop: {
     flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
+    gap: spacing.md,
   },
-  rowConnector: {
-    backgroundColor: colors.surfaceAlt,
-    opacity: 0.9,
-  },
-  rail: {
-    width: 4,
-  },
-  content: {
-    flex: 1,
-    padding: spacing.md,
-    gap: spacing.xs,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  numeralCol: {
     alignItems: 'center',
+    width: 40,
   },
-  kindTag: {
-    borderWidth: 1,
+  numeral: {
+    width: 40,
+    height: 40,
     borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
   },
-  metaRow: {
+  numeralText: {
+    fontFamily: font.family.display,
+    fontSize: font.size.lg,
+  },
+  body: {
+    flex: 1,
+    paddingBottom: spacing.lg,
+    gap: 3,
+  },
+  metaTop: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 1,
   },
-  actionRow: {
+  time: {
+    color: colors.textMuted,
+    fontSize: font.size.sm,
+    letterSpacing: 0.2,
+  },
+  kind: {
+    fontSize: font.size.xs,
+    fontWeight: font.weight.bold,
+    letterSpacing: 1.4,
+  },
+  title: {
+    color: colors.text,
+    fontFamily: font.family.heading,
+    fontSize: font.size.xl,
+    letterSpacing: -0.3,
+    lineHeight: font.size.xl + 3,
+  },
+  sub: {
+    color: colors.textMuted,
+    fontSize: font.size.sm,
+  },
+  actions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
-    marginTop: spacing.xs,
+    marginTop: spacing.sm,
   },
-  bookBtn: {
-    alignSelf: 'flex-start',
-    paddingVertical: spacing.xs,
+  actionPrimary: {
+    paddingVertical: spacing.xs + 2,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
-    backgroundColor: colors.accentSoft,
+    backgroundColor: colors.accent,
   },
-  dirBtn: {
-    alignSelf: 'flex-start',
-    paddingVertical: spacing.xs,
+  actionPrimaryText: {
+    color: colors.onArt,
+    fontSize: font.size.sm,
+    fontWeight: font.weight.semibold,
+  },
+  actionGhost: {
+    paddingVertical: spacing.xs + 2,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
-    backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderStrong,
   },
-  bookBtnPressed: {
+  actionGhostText: {
+    color: colors.text,
+    fontSize: font.size.sm,
+    fontWeight: font.weight.medium,
+  },
+  pressed: {
     opacity: 0.7,
+  },
+  connector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingLeft: 20,
+    paddingBottom: spacing.md,
+  },
+  connectorLine: {
+    width: 1.5,
+    height: 24,
+    backgroundColor: colors.border,
+    marginLeft: 19,
+  },
+  connectorText: {
+    color: colors.textFaint,
+    fontSize: font.size.sm,
+    fontStyle: 'italic',
   },
 });

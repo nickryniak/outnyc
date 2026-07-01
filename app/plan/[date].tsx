@@ -1,44 +1,32 @@
 // =============================================================================
 // OutNYC — plan a day (app/plan/[date].tsx)
 // =============================================================================
-// For each free-time window on the date: "Plan this day" (heuristic), render the
-// ordered walkable itinerary, reshuffle with a modifier (more food / more active
-// / cheaper / surprise), and lock in to schedule local notifications.
+// A printed-guide layout: each free-time window gets a "sunset over Manhattan"
+// skyline hero, a numbered itinerary, reshuffle modifiers, and lock-in.
 // =============================================================================
 
+import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { PlanItemCard } from '../../components/PlanItemCard';
+import { Skyline } from '../../components/Skyline';
 import {
   Button,
   Caption,
   Chip,
   EmptyView,
   ErrorView,
+  Eyebrow,
   Heading,
   LoadingView,
+  Rule,
 } from '../../components/ui';
 import { planKey, useStore } from '../../lib/store';
-import { colors, radius, spacing } from '../../lib/theme';
+import { colors, font, radius, spacing, timeOfDay } from '../../lib/theme';
 import { format12h, formatWindow, relativeDayLabel } from '../../lib/time';
 import type { Plan, PlanModifier, PriceTier, TimeWindow } from '../../lib/types';
-
-/** A one-line summary of a packed plan: stop count · span · price range. */
-function planSummary(plan: Plan): string {
-  const stops = plan.items.filter((i) => i.kind !== 'walk' && i.kind !== 'break');
-  if (stops.length === 0) return 'No stops';
-  const first = stops[0];
-  const last = stops[stops.length - 1];
-  const tiers = stops.map((s) => s.priceTier).filter((t): t is PriceTier => t != null);
-  const priceText =
-    tiers.length > 0
-      ? ` · ${'$'.repeat(Math.min(...tiers))}–${'$'.repeat(Math.max(...tiers))}`
-      : '';
-  const plural = stops.length === 1 ? 'stop' : 'stops';
-  return `${stops.length} ${plural} · ${format12h(first.startTime)}–${format12h(last.endTime)}${priceText}`;
-}
 
 const MODIFIERS: { key: PlanModifier; label: string }[] = [
   { key: 'more-food', label: 'More food' },
@@ -47,6 +35,21 @@ const MODIFIERS: { key: PlanModifier; label: string }[] = [
   { key: 'surprise', label: 'Surprise me' },
 ];
 
+/** A one-line summary: stop count · span · price range. */
+function planSummary(plan: Plan): string {
+  const stops = plan.items.filter((i) => i.kind !== 'walk' && i.kind !== 'break');
+  if (stops.length === 0) return 'No stops';
+  const first = stops[0];
+  const last = stops[stops.length - 1];
+  const tiers = stops.map((s) => s.priceTier).filter((t): t is PriceTier => t != null);
+  const priceText =
+    tiers.length > 0
+      ? `  ·  ${'$'.repeat(Math.min(...tiers))}–${'$'.repeat(Math.max(...tiers))}`
+      : '';
+  const plural = stops.length === 1 ? 'stop' : 'stops';
+  return `${stops.length} ${plural}  ·  ${format12h(first.startTime)}–${format12h(last.endTime)}${priceText}`;
+}
+
 export default function PlanScreen() {
   const params = useLocalSearchParams<{ date: string }>();
   const date = typeof params.date === 'string' ? params.date : '';
@@ -54,13 +57,8 @@ export default function PlanScreen() {
   const loadStatus = useStore((s) => s.loadStatus);
   const availability = useStore((s) => (date ? s.availabilityByDate[date] : undefined));
 
-  if (loadStatus !== 'ready') {
-    return <LoadingView label="Loading…" />;
-  }
-
-  if (!date) {
-    return <EmptyView title="Unknown day" message="No date was provided." />;
-  }
+  if (loadStatus !== 'ready') return <LoadingView label="Loading…" />;
+  if (!date) return <EmptyView title="Unknown day" message="No date was provided." />;
 
   const windows = availability?.windows ?? [];
   if (windows.length === 0) {
@@ -74,8 +72,6 @@ export default function PlanScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Heading>{relativeDayLabel(date)}</Heading>
-      <Caption muted>{date}</Caption>
       {windows.map((w) => (
         <WindowPlan key={`${w.start}-${w.end}`} date={date} window={w} />
       ))}
@@ -96,12 +92,8 @@ function WindowPlan({ date, window }: { date: string; window: TimeWindow }) {
 
   const [lockMsg, setLockMsg] = useState<string | null>(null);
 
-  // Auto-generate the first plan for this window on mount if none exists.
   useEffect(() => {
-    if (!plan && (!planning || planning.status === 'idle')) {
-      void generatePlan(date, window);
-    }
-    // We intentionally depend only on key so this fires once per window.
+    if (!plan && (!planning || planning.status === 'idle')) void generatePlan(date, window);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
@@ -123,18 +115,30 @@ function WindowPlan({ date, window }: { date: string; window: TimeWindow }) {
     await reshufflePlan(date, window, m);
   }
 
+  let stopN = 0;
+
   return (
-    <View style={styles.windowCard}>
-      <View style={styles.windowHeader}>
-        <Heading>{formatWindow(window)}</Heading>
-        {plan && plan.modifier ? (
-          <Caption muted>{labelForModifier(plan.modifier)}</Caption>
-        ) : null}
+    <View style={styles.windowBlock}>
+      {/* Skyline hero */}
+      <View style={styles.hero}>
+        <Skyline variant={timeOfDay(window.start)} height={186} />
+        <LinearGradient
+          colors={['transparent', 'rgba(18,14,10,0.15)', 'rgba(18,14,10,0.78)']}
+          style={styles.heroScrim}
+        />
+        <View style={styles.heroText}>
+          <Text style={styles.heroEyebrow}>{relativeDayLabel(date).toUpperCase()}</Text>
+          <Text style={styles.heroTitle}>{formatWindow(window)}</Text>
+        </View>
       </View>
+
+      {plan && plan.items.length > 0 ? (
+        <Text style={styles.summary}>{planSummary(plan)}</Text>
+      ) : null}
 
       {isPlanning ? (
         <View style={styles.loadingBox}>
-          <LoadingView label="Packing your itinerary…" />
+          <LoadingView label="Packing your night…" />
         </View>
       ) : planning?.status === 'error' ? (
         <ErrorView
@@ -150,16 +154,17 @@ function WindowPlan({ date, window }: { date: string; window: TimeWindow }) {
         />
       ) : (
         <View style={styles.itinerary}>
-          <Caption muted>{planSummary(plan)}</Caption>
-          {plan.items.map((item) => (
-            <PlanItemCard key={`${item.order}-${item.id}`} item={item} />
-          ))}
+          {plan.items.map((item) => {
+            const isConnector = item.kind === 'walk' || item.kind === 'break';
+            const n = isConnector ? undefined : (stopN += 1);
+            return <PlanItemCard key={`${item.order}-${item.id}`} item={item} stopNumber={n} />;
+          })}
         </View>
       )}
 
       {plan ? (
-        <>
-          <Caption muted>Reshuffle</Caption>
+        <View style={styles.controls}>
+          <Rule label="Reshuffle" />
           <View style={styles.modifiers}>
             {MODIFIERS.map((m) => (
               <Chip
@@ -177,7 +182,6 @@ function WindowPlan({ date, window }: { date: string; window: TimeWindow }) {
               variant={locked ? 'secondary' : 'primary'}
               disabled={isPlanning}
               onPress={() => void onLock(plan.id)}
-              style={styles.lockBtn}
             />
           ) : null}
           {locked ? (
@@ -192,19 +196,12 @@ function WindowPlan({ date, window }: { date: string; window: TimeWindow }) {
           ) : null}
           {lockMsg ? <Caption muted>{lockMsg}</Caption> : null}
           {locked && !lockMsg ? (
-            <Caption muted>
-              We&apos;ll nudge you ~20 min before each stop (local notifications).
-            </Caption>
+            <Caption muted>We&apos;ll nudge you ~20 min before each stop.</Caption>
           ) : null}
-          <Caption muted>Built by the {plan.generatedBy} planner.</Caption>
-        </>
+        </View>
       ) : null}
     </View>
   );
-}
-
-function labelForModifier(m: PlanModifier): string {
-  return MODIFIERS.find((x) => x.key === m)?.label ?? m;
 }
 
 const styles = StyleSheet.create({
@@ -215,33 +212,59 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     paddingBottom: spacing.xxl,
-    gap: spacing.md,
+    gap: spacing.xl,
   },
-  windowCard: {
-    backgroundColor: colors.surface,
+  windowBlock: {
+    gap: spacing.lg,
+  },
+  hero: {
+    height: 186,
     borderRadius: radius.lg,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.lg,
-    gap: spacing.md,
   },
-  windowHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  heroScrim: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  heroText: {
+    position: 'absolute',
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: spacing.lg,
+  },
+  heroEyebrow: {
+    color: colors.onArtMuted,
+    fontSize: font.size.xs,
+    fontWeight: font.weight.bold,
+    letterSpacing: 2,
+    marginBottom: 2,
+  },
+  heroTitle: {
+    color: colors.onArt,
+    fontFamily: font.family.display,
+    fontSize: 30,
+    letterSpacing: -0.6,
+    lineHeight: 34,
+  },
+  summary: {
+    color: colors.textMuted,
+    fontSize: font.size.sm,
+    letterSpacing: 0.3,
+    marginTop: -spacing.sm,
   },
   itinerary: {
-    gap: spacing.sm,
+    gap: 0,
+  },
+  loadingBox: {
+    height: 160,
+  },
+  controls: {
+    gap: spacing.md,
   },
   modifiers: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
-  },
-  loadingBox: {
-    height: 160,
-  },
-  lockBtn: {
-    marginTop: spacing.xs,
   },
 });
