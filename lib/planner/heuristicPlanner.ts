@@ -161,14 +161,21 @@ export class HeuristicPlanner implements Planner {
     const totalMin = windowMinutes(req.window);
     const seed = hash(`${req.date}:${req.modifier ?? 'default'}`);
 
+    // The "cheaper" modifier tightens the ceiling so pricey stops (including
+    // fixed events) drop out, not just get down-weighted.
+    const effPrice: PriceRange =
+      req.modifier === 'cheaper'
+        ? { min: req.price.min, max: Math.min(req.price.max, req.price.min + 1) as PriceTier }
+        : req.price;
+
     // Build candidate pools.
     const openBuckets = req.bucketList
       .filter((b) => !b.done)
-      .filter((b) => withinPrice(b.priceTier, req.price))
+      .filter((b) => withinPrice(b.priceTier, effPrice))
       .map(bucketToCandidate);
 
-    const eventPool = req.events.filter((c) => withinPrice(c.priceTier, req.price));
-    const placePool = req.places.filter((c) => withinPrice(c.priceTier, req.price));
+    const eventPool = req.events.filter((c) => withinPrice(c.priceTier, effPrice));
+    const placePool = req.places.filter((c) => withinPrice(c.priceTier, effPrice));
 
     // Rank each pool. Bucket items get a placement priority boost by ranking
     // them first and prepending the best fit.
@@ -176,12 +183,11 @@ export class HeuristicPlanner implements Planner {
     const rankedEvents = rankCandidates(eventPool, req, seed);
     const rankedPlaces = rankCandidates(placePool, req, seed);
 
-    // Selection order: try to weave in one bucket item first (when it fits),
-    // then alternate events/places to vary the day.
-    const ordered: Candidate[] = [];
-    if (rankedBuckets.length > 0) ordered.push(rankedBuckets[0].candidate);
+    // Preference order: weave in one bucket item first (when it fits), then
+    // alternate events/places by rank for variety.
+    const preference: Candidate[] = [];
+    if (rankedBuckets.length > 0) preference.push(rankedBuckets[0].candidate);
 
-    // Interleave remaining events + places by rank for variety.
     const evs = rankedEvents.map((s) => s.candidate);
     const pls = rankedPlaces.map((s) => s.candidate);
     let ei = 0;
@@ -190,63 +196,48 @@ export class HeuristicPlanner implements Planner {
     const placesFirst = req.modifier === 'more-food';
     while (ei < evs.length || pi < pls.length) {
       if (placesFirst) {
-        if (pi < pls.length) ordered.push(pls[pi++]);
-        if (ei < evs.length) ordered.push(evs[ei++]);
+        if (pi < pls.length) preference.push(pls[pi++]);
+        if (ei < evs.length) preference.push(evs[ei++]);
       } else {
-        if (ei < evs.length) ordered.push(evs[ei++]);
-        if (pi < pls.length) ordered.push(pls[pi++]);
+        if (ei < evs.length) preference.push(evs[ei++]);
+        if (pi < pls.length) preference.push(pls[pi++]);
       }
     }
 
-    // Greedy time-packing within the window. Events keep their fixed times when
-    // they fall inside the window; everything else flows sequentially with gaps.
+    // Split into fixed-time events (must be anchored to their real slot inside
+    // the window) and flexible fillers (buckets/places/timeless activities).
+    const isFixed = (c: Candidate): boolean =>
+      !!c.startTime &&
+      !!c.endTime &&
+      toMinutes(c.endTime) > winStart &&
+      toMinutes(c.startTime) < winEnd;
+
+    const fixed = preference
+      .filter(isFixed)
+      .sort((a, b) => toMinutes(a.startTime as string) - toMinutes(b.startTime as string));
+    const flexible = preference.filter((c) => !isFixed(c));
+
     const items: PlanItem[] = [];
     let cursor = winStart;
     let order = 0;
     let lastNeighborhood: string | undefined;
     const usedIds = new Set<string>();
 
-    for (const cand of ordered) {
-      if (usedIds.has(cand.id)) continue;
-      const dur = candidateDuration(cand);
-      if (dur <= 0) continue;
-
-      // Compute start/end. Fixed-time events anchor to their slot if it fits.
-      let start: number;
-      let end: number;
-      if (cand.startTime && cand.endTime) {
-        const cs = toMinutes(cand.startTime);
-        const ce = toMinutes(cand.endTime);
-        // Skip events that fall entirely outside the window.
-        if (ce <= winStart || cs >= winEnd) continue;
-        // Only place if it doesn't overlap what we've already scheduled.
-        if (cs < cursor) continue;
-        start = cs;
-        end = Math.min(ce, winEnd);
-      } else {
-        start = cursor;
-        end = start + dur;
-        if (end > winEnd) continue; // doesn't fit remaining window
-      }
-
-      if (end > winEnd || start < cursor) continue;
-
-      // Insert a walk connector on a neighborhood hop.
+    /** Place a stop, inserting a walk connector on a neighborhood hop. */
+    const pushStop = (cand: Candidate, start: number, end: number): void => {
       if (
         lastNeighborhood &&
         cand.neighborhood &&
         cand.neighborhood !== lastNeighborhood &&
         start - cursor >= GAP_MIN
       ) {
-        const walkBase = makeWalk(order, lastNeighborhood, cand.neighborhood);
         items.push({
-          ...walkBase,
+          ...makeWalk(order, lastNeighborhood, cand.neighborhood),
           startTime: fromMinutes(cursor),
           endTime: fromMinutes(Math.min(cursor + GAP_MIN, start)),
         });
         order += 1;
       }
-
       items.push({
         id: cand.id,
         order,
@@ -267,10 +258,44 @@ export class HeuristicPlanner implements Planner {
       usedIds.add(cand.id);
       lastNeighborhood = cand.neighborhood ?? lastNeighborhood;
       cursor = end + GAP_MIN;
+    };
 
-      // Stop when there's no meaningful time left.
-      if (winEnd - cursor < 30) break;
+    /**
+     * Greedily fill the current cursor forward with flexible stops until `limit`
+     * (first-fit over the ranked queue). When `reserveGap` is set we leave a
+     * transit buffer before `limit` so a following fixed event isn't overlapped.
+     */
+    const fillUntil = (limit: number, reserveGap: boolean): void => {
+      let progressed = true;
+      while (progressed && limit - cursor >= 30) {
+        progressed = false;
+        for (const cand of flexible) {
+          if (usedIds.has(cand.id)) continue;
+          const dur = candidateDuration(cand);
+          if (dur <= 0) continue;
+          const start = cursor;
+          const end = start + dur;
+          if (end + (reserveGap ? GAP_MIN : 0) <= limit) {
+            pushStop(cand, start, end);
+            progressed = true;
+            break;
+          }
+        }
+      }
+    };
+
+    // Pack: before each fixed event, fill the gap with flexible stops, then
+    // anchor the event at its real time. After the last event, fill to the end
+    // of the window so it never leaves a big empty hole.
+    for (const ev of fixed) {
+      const evS = toMinutes(ev.startTime as string);
+      const evE = Math.min(toMinutes(ev.endTime as string), winEnd);
+      if (evS < cursor) continue; // no room before this event; skip it
+      fillUntil(evS, true);
+      if (evS < cursor) continue; // a filler overran; skip rather than overlap
+      pushStop(ev, evS, evE);
     }
+    fillUntil(winEnd, false);
 
     // If nothing fit (e.g. tiny window), leave items empty — the UI shows an
     // empty state explaining why.
