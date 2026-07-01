@@ -39,5 +39,5 @@ export default function Index() {
     );
   }
 
-  return <Redirect href={profile.onboarded ? '/week' : '/onboarding'} />;
+  return <Redirect href={profile.onboarded ? '/week' : '/welcome'} />;
 }

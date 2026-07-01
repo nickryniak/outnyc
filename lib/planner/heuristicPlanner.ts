@@ -116,8 +116,10 @@ function rankCandidates(
       // Deterministic tie-break that varies by modifier+date so reshuffle
       // across modifiers reorders selection.
       const jitter = (hash(candidate.id + ':' + seed) % 7);
-      // "surprise" leans heavily on the jitter for variety.
-      score += req.modifier === 'surprise' ? jitter * 2 : jitter * 0.1;
+      // "surprise" leans heavily on jitter; an explicit reshuffle (nonce > 0)
+      // also shuffles noticeably, while the first generation stays near-stable.
+      const jitterWeight = req.modifier === 'surprise' ? 2 : req.nonce ? 1.3 : 0.1;
+      score += jitter * jitterWeight;
       return { candidate, score };
     })
     .sort((a, b) => {

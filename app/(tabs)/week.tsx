@@ -83,6 +83,7 @@ export default function WeekScreen() {
 
   const [weekOffset, setWeekOffset] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [dayBusy, setDayBusy] = useState<Set<string>>(new Set());
 
   const today = todayNY();
   const monday = useMemo(() => mondayOf(addDays(today, weekOffset * 7)), [today, weekOffset]);
@@ -126,6 +127,19 @@ export default function WeekScreen() {
       await reshuffleWeek(dates);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function onRegenDay(date: string) {
+    setDayBusy((prev) => new Set(prev).add(date));
+    try {
+      await reshuffleWeek([date]);
+    } finally {
+      setDayBusy((prev) => {
+        const next = new Set(prev);
+        next.delete(date);
+        return next;
+      });
     }
   }
 
@@ -228,23 +242,38 @@ export default function WeekScreen() {
           const titles = plans.flatMap((p) =>
             p.items.filter((i) => i.kind !== 'walk' && i.kind !== 'break').map((i) => i.title),
           );
+          const regenning = dayBusy.has(d);
           return (
-            <Pressable
-              key={`res-${d}`}
-              accessibilityRole="button"
-              onPress={() => router.push({ pathname: '/plan/[date]', params: { date: d } })}
-              style={({ pressed }) => [styles.dayCard, pressed && styles.pressed]}
-            >
+            <View key={`res-${d}`} style={styles.dayCard}>
               <View style={styles.dayCardHead}>
                 <Text style={styles.dayCardTitle}>{monthDayLabel(d)}</Text>
-                <Text style={styles.openLink}>{titles.length ? 'Open →' : 'Plan →'}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${monthDayLabel(d)} plan`}
+                  hitSlop={8}
+                  onPress={() => router.push({ pathname: '/plan/[date]', params: { date: d } })}
+                >
+                  <Text style={styles.openLink}>{titles.length ? 'Open →' : 'Plan →'}</Text>
+                </Pressable>
               </View>
               {titles.length ? (
                 <Text style={styles.titleList}>{titles.join('  ·  ')}</Text>
               ) : (
-                <Caption muted>Free time set — tap to generate this day.</Caption>
+                <Caption muted>Free time set — tap Plan to generate this day.</Caption>
               )}
-            </Pressable>
+              {titles.length ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Regenerate ${monthDayLabel(d)}`}
+                  disabled={regenning || busy}
+                  hitSlop={6}
+                  onPress={() => void onRegenDay(d)}
+                  style={({ pressed }) => [styles.regenBtn, pressed && styles.pressed]}
+                >
+                  <Text style={styles.regenText}>{regenning ? 'Regenerating…' : '↻ Regenerate'}</Text>
+                </Pressable>
+              ) : null}
+            </View>
           );
         })}
       </ScrollView>
@@ -329,5 +358,15 @@ const styles = StyleSheet.create({
   },
   openLink: { color: colors.accent, fontSize: font.size.sm, fontWeight: font.weight.semibold },
   titleList: { color: colors.textMuted, fontSize: font.size.sm, lineHeight: 20 },
+  regenBtn: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+  },
+  regenText: { color: colors.text, fontSize: font.size.sm, fontWeight: font.weight.medium },
   pressed: { opacity: 0.85 },
 });
