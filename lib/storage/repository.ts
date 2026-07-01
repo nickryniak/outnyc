@@ -9,6 +9,7 @@
 import type {
   Availability,
   BucketItem,
+  DayPrefs,
   Feedback,
   Plan,
   Profile,
@@ -38,6 +39,14 @@ export interface Repository {
   // ---- locked-in plans (ids with scheduled notifications) ----
   getLockedPlanIds(): Promise<string[]>;
   saveLockedPlanIds(ids: string[]): Promise<void>;
+
+  // ---- per-day planner preferences (one row per date) ----
+  getAllDayPrefs(): Promise<DayPrefs[]>;
+  saveDayPrefs(prefs: DayPrefs): Promise<void>;
+
+  // ---- never-repeat memory: candidate ids already suggested, per date ----
+  getSeenMap(): Promise<Record<string, string[]>>;
+  saveSeenMap(map: Record<string, string[]>): Promise<void>;
 
   // ---- feedback ----
   getFeedback(planId: string): Promise<Feedback[]>;

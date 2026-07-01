@@ -89,16 +89,16 @@ export default function Onboarding() {
             style={styles.heroScrim}
           />
           <View style={styles.heroText}>
-            <Text style={styles.heroEyebrow}>{isEdit ? 'PREFERENCES' : 'NEW YORK CITY'}</Text>
-            <Text style={styles.heroTitle}>{isEdit ? 'Edit your taste' : 'OutNYC'}</Text>
+            <Text style={styles.heroEyebrow}>{isEdit ? 'YOUR USUAL PREFERENCES' : 'NEW YORK CITY'}</Text>
+            <Text style={styles.heroTitle}>{isEdit ? 'Edit your defaults' : 'OutNYC'}</Text>
           </View>
         </View>
 
         <View style={styles.bodyPad}>
           <Body muted>
             {isEdit
-              ? 'Update your defaults. These bias every plan the app makes.'
-              : 'Tell us how you like to go out. We’ll pack your free time into an ordered, walkable night — no accounts, no API keys.'}
+              ? 'These are your starting points. You can change any of them for a single day right on the calendar.'
+              : 'Set your usual preferences. You can change any of them for a single day right on the calendar.'}
           </Body>
 
           <Eyebrow>Party size</Eyebrow>

@@ -18,10 +18,12 @@ import { colors, font, spacing } from '../lib/theme';
 export default function Welcome() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const profile = useStore((s) => s.profile);
+  const markEntered = useStore((s) => s.markEntered);
 
   function enter() {
-    router.replace(profile?.onboarded ? '/week' : '/onboarding');
+    // Straight into the calendar. No setup gate; preferences live per day.
+    void markEntered();
+    router.replace('/week');
   }
 
   return (
@@ -42,8 +44,8 @@ export default function Welcome() {
           <Text style={styles.wordmark}>OutNYC</Text>
           <Text style={styles.tagline}>Your night out, planned.</Text>
           <Text style={styles.blurb}>
-            Events, restaurants, and your bucket list — packed into an ordered,
-            walkable night across the city. No accounts, no API keys.
+            Mark when you are free and get a walkable plan for every day of your
+            week: events, restaurants, and your own bucket list, in order.
           </Text>
           <Button label="Start planning →" onPress={enter} style={styles.cta} />
         </View>

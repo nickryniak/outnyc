@@ -12,6 +12,7 @@ import { STORAGE_PREFIX } from '../constants';
 import type {
   Availability,
   BucketItem,
+  DayPrefs,
   Feedback,
   Plan,
   Profile,
@@ -25,6 +26,8 @@ const KEYS = {
   plans: `${STORAGE_PREFIX}plans`, // map: date|start|end -> Plan
   locked: `${STORAGE_PREFIX}lockedPlanIds`, // array of plan ids with nudges
   feedback: `${STORAGE_PREFIX}feedback`, // array of Feedback
+  dayPrefs: `${STORAGE_PREFIX}dayPrefs`, // map: date -> DayPrefs
+  seen: `${STORAGE_PREFIX}seenByDate`, // map: date -> candidate ids already used
 } as const;
 
 /** Safe read of a JSON value; returns fallback on missing/corrupt data. */
@@ -42,6 +45,20 @@ async function readJSON<T>(key: string, fallback: T): Promise<T> {
 
 async function writeJSON(key: string, value: unknown): Promise<void> {
   await AsyncStorage.setItem(key, JSON.stringify(value));
+}
+
+/**
+ * All mutations that read-modify-write a stored map MUST run serialized.
+ * Without this, two near-simultaneous saves (e.g. painting several calendar
+ * cells in a burst) both read the same snapshot and the second write silently
+ * drops the first one's data.
+ */
+let writeChain: Promise<unknown> = Promise.resolve();
+function serialized<T>(work: () => Promise<T>): Promise<T> {
+  const next = writeChain.then(work, work);
+  // Keep the chain alive even if this work item rejects.
+  writeChain = next.catch(() => undefined);
+  return next;
 }
 
 function planKey(date: string, windowStart: string, windowEnd: string): string {
@@ -74,13 +91,15 @@ export class AsyncStorageRepository implements Repository {
   }
 
   async saveAvailability(availability: Availability): Promise<void> {
-    const map = await this.availabilityMap();
-    if (availability.windows.length === 0) {
-      delete map[availability.date];
-    } else {
-      map[availability.date] = availability;
-    }
-    await writeJSON(KEYS.availability, map);
+    await serialized(async () => {
+      const map = await this.availabilityMap();
+      if (availability.windows.length === 0) {
+        delete map[availability.date];
+      } else {
+        map[availability.date] = availability;
+      }
+      await writeJSON(KEYS.availability, map);
+    });
   }
 
   async getBucketList(): Promise<BucketItem[]> {
@@ -122,19 +141,44 @@ export class AsyncStorageRepository implements Repository {
     await writeJSON(KEYS.locked, ids);
   }
 
+  async getAllDayPrefs(): Promise<DayPrefs[]> {
+    const map = await readJSON<Record<string, DayPrefs>>(KEYS.dayPrefs, {});
+    return Object.values(map);
+  }
+
+  async saveDayPrefs(prefs: DayPrefs): Promise<void> {
+    await serialized(async () => {
+      const map = await readJSON<Record<string, DayPrefs>>(KEYS.dayPrefs, {});
+      map[prefs.date] = prefs;
+      await writeJSON(KEYS.dayPrefs, map);
+    });
+  }
+
+  async getSeenMap(): Promise<Record<string, string[]>> {
+    return readJSON<Record<string, string[]>>(KEYS.seen, {});
+  }
+
+  async saveSeenMap(map: Record<string, string[]>): Promise<void> {
+    await writeJSON(KEYS.seen, map);
+  }
+
   async savePlan(plan: Plan): Promise<void> {
-    const map = await this.plansMap();
-    map[planKey(plan.date, plan.window.start, plan.window.end)] = plan;
-    await writeJSON(KEYS.plans, map);
+    await serialized(async () => {
+      const map = await this.plansMap();
+      map[planKey(plan.date, plan.window.start, plan.window.end)] = plan;
+      await writeJSON(KEYS.plans, map);
+    });
   }
 
   async deletePlan(planId: string): Promise<void> {
-    const map = await this.plansMap();
-    const entry = Object.entries(map).find(([, p]) => p.id === planId);
-    if (entry) {
-      delete map[entry[0]];
-      await writeJSON(KEYS.plans, map);
-    }
+    await serialized(async () => {
+      const map = await this.plansMap();
+      const entry = Object.entries(map).find(([, p]) => p.id === planId);
+      if (entry) {
+        delete map[entry[0]];
+        await writeJSON(KEYS.plans, map);
+      }
+    });
   }
 
   async getFeedback(planId: string): Promise<Feedback[]> {
@@ -143,9 +187,11 @@ export class AsyncStorageRepository implements Repository {
   }
 
   async addFeedback(feedback: Feedback): Promise<void> {
-    const all = await readJSON<Feedback[]>(KEYS.feedback, []);
-    all.push(feedback);
-    await writeJSON(KEYS.feedback, all);
+    await serialized(async () => {
+      const all = await readJSON<Feedback[]>(KEYS.feedback, []);
+      all.push(feedback);
+      await writeJSON(KEYS.feedback, all);
+    });
   }
 
   async clearAll(): Promise<void> {
@@ -156,6 +202,8 @@ export class AsyncStorageRepository implements Repository {
       KEYS.plans,
       KEYS.locked,
       KEYS.feedback,
+      KEYS.dayPrefs,
+      KEYS.seen,
     ]);
   }
 }

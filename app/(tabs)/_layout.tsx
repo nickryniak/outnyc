@@ -1,26 +1,13 @@
 // =============================================================================
 // OutNYC — tabs layout (app/(tabs)/_layout.tsx)
 // =============================================================================
-// Bottom tabs: Week, Bucket list, Settings. Uses simple text glyphs as icons to
-// avoid pulling in an icon font dependency.
+// Bottom tabs: Week, Bucket list, Settings. Minimal line icons (lucide).
 // =============================================================================
 
 import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
+import { CalendarDays, ListChecks, SlidersHorizontal } from 'lucide-react-native';
 
 import { colors, font } from '../../lib/theme';
-
-function TabIcon({ glyph, color }: { glyph: string; color: string }) {
-  return (
-    <Text
-      accessibilityElementsHidden
-      importantForAccessibility="no"
-      style={{ color, fontSize: font.size.lg }}
-    >
-      {glyph}
-    </Text>
-  );
-}
 
 export default function TabsLayout() {
   return (
@@ -28,7 +15,11 @@ export default function TabsLayout() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.bg },
         headerTintColor: colors.text,
-        headerTitleStyle: { color: colors.text, fontWeight: font.weight.semibold },
+        headerTitleStyle: {
+          color: colors.text,
+          fontFamily: font.family.heading,
+          fontSize: font.size.lg,
+        },
         headerShadowVisible: false,
         tabBarStyle: {
           backgroundColor: colors.surface,
@@ -44,7 +35,7 @@ export default function TabsLayout() {
           headerShown: false,
           title: 'This week',
           tabBarLabel: 'Week',
-          tabBarIcon: ({ color }) => <TabIcon glyph="▦" color={color} />,
+          tabBarIcon: ({ color }) => <CalendarDays size={20} color={color} strokeWidth={1.8} />,
         }}
       />
       <Tabs.Screen
@@ -52,7 +43,7 @@ export default function TabsLayout() {
         options={{
           title: 'Bucket list',
           tabBarLabel: 'Bucket',
-          tabBarIcon: ({ color }) => <TabIcon glyph="★" color={color} />,
+          tabBarIcon: ({ color }) => <ListChecks size={20} color={color} strokeWidth={1.8} />,
         }}
       />
       <Tabs.Screen
@@ -60,7 +51,9 @@ export default function TabsLayout() {
         options={{
           title: 'Settings',
           tabBarLabel: 'Settings',
-          tabBarIcon: ({ color }) => <TabIcon glyph="⚙" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <SlidersHorizontal size={20} color={color} strokeWidth={1.8} />
+          ),
         }}
       />
     </Tabs>

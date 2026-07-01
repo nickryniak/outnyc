@@ -15,25 +15,14 @@ import { Skyline } from '../../components/Skyline';
 import {
   Button,
   Caption,
-  Chip,
   EmptyView,
   ErrorView,
-  Eyebrow,
-  Heading,
   LoadingView,
-  Rule,
 } from '../../components/ui';
 import { planKey, useStore } from '../../lib/store';
 import { colors, font, radius, spacing, timeOfDay } from '../../lib/theme';
 import { format12h, formatWindow, relativeDayLabel } from '../../lib/time';
-import type { Plan, PlanModifier, PriceTier, TimeWindow } from '../../lib/types';
-
-const MODIFIERS: { key: PlanModifier; label: string }[] = [
-  { key: 'more-food', label: 'More food' },
-  { key: 'more-active', label: 'More active' },
-  { key: 'cheaper', label: 'Cheaper' },
-  { key: 'surprise', label: 'Surprise me' },
-];
+import type { Plan, PriceTier, TimeWindow } from '../../lib/types';
 
 /** A one-line summary: stop count · span · price range. */
 function planSummary(plan: Plan): string {
@@ -86,7 +75,6 @@ function WindowPlan({ date, window }: { date: string; window: TimeWindow }) {
   const locked = useStore((s) => (plan ? !!s.lockedPlanIds[plan.id] : false));
 
   const generatePlan = useStore((s) => s.generatePlan);
-  const reshufflePlan = useStore((s) => s.reshufflePlan);
   const lockInPlan = useStore((s) => s.lockInPlan);
   const unlockPlan = useStore((s) => s.unlockPlan);
 
@@ -102,17 +90,12 @@ function WindowPlan({ date, window }: { date: string; window: TimeWindow }) {
   async function onLock(planId: string) {
     const res = await lockInPlan(planId);
     if (res.reason === 'ok') {
-      setLockMsg(`Locked in — ${res.scheduled} reminder${res.scheduled === 1 ? '' : 's'} set.`);
+      setLockMsg(`Locked in. ${res.scheduled} reminder${res.scheduled === 1 ? '' : 's'} set.`);
     } else if (res.reason === 'permission-denied') {
       setLockMsg('Notifications are off. Enable them in iOS Settings to get nudges.');
     } else {
-      setLockMsg('Nothing to remind you about — every stop starts too soon or has passed.');
+      setLockMsg('Nothing to remind you about. Every stop starts too soon or has passed.');
     }
-  }
-
-  async function onReshuffle(m: PlanModifier) {
-    setLockMsg(null);
-    await reshufflePlan(date, window, m);
   }
 
   let stopN = 0;
@@ -164,21 +147,12 @@ function WindowPlan({ date, window }: { date: string; window: TimeWindow }) {
 
       {plan ? (
         <View style={styles.controls}>
-          <Rule label="Reshuffle" />
-          <View style={styles.modifiers}>
-            {MODIFIERS.map((m) => (
-              <Chip
-                key={m.key}
-                label={m.label}
-                selected={plan.modifier === m.key}
-                onPress={isPlanning ? undefined : () => void onReshuffle(m.key)}
-              />
-            ))}
-          </View>
-
+          <Caption muted>
+            To change this plan, use Reshuffle or Swap on the calendar.
+          </Caption>
           {plan.items.length > 0 ? (
             <Button
-              label={locked ? 'Locked in ✓ — re-lock' : 'Lock in & remind me'}
+              label={locked ? 'Locked in. Tap to re-lock' : 'Lock in and remind me'}
               variant={locked ? 'secondary' : 'primary'}
               disabled={isPlanning}
               onPress={() => void onLock(plan.id)}

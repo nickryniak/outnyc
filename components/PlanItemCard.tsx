@@ -97,32 +97,35 @@ export function PlanItemCard({ item, stopNumber }: { item: PlanItem; stopNumber?
           {item.bucketItemId ? '  ·  from your list' : ''}
         </Text>
 
-        {item.bookingUrl || directions ? (
-          <View style={styles.actions}>
-            {item.bookingUrl ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={item.kind === 'event' ? 'Get tickets' : 'Book'}
-                onPress={() => openExternal(item.bookingUrl as string)}
-                style={({ pressed }) => [styles.actionPrimary, pressed && styles.pressed]}
-              >
-                <Text style={styles.actionPrimaryText}>
-                  {item.kind === 'event' ? 'Tickets ↗' : 'Book ↗'}
-                </Text>
-              </Pressable>
-            ) : null}
-            {directions ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Directions to ${item.title}`}
-                onPress={() => openExternal(directions)}
-                style={({ pressed }) => [styles.actionGhost, pressed && styles.pressed]}
-              >
-                <Text style={styles.actionGhostText}>Directions ↗</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
+        {item.description ? <Text style={styles.desc}>{item.description}</Text> : null}
+        {item.note ? <Text style={styles.why}>{item.note}</Text> : null}
+
+        <View style={styles.actions}>
+          {item.bookingUrl ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={item.kind === 'event' ? 'Get tickets' : 'Open website'}
+              onPress={() => openExternal(item.bookingUrl as string)}
+              style={({ pressed }) => [styles.actionPrimary, pressed && styles.pressed]}
+            >
+              <Text style={styles.actionPrimaryText}>
+                {item.kind === 'event' ? 'Tickets ↗' : 'Website ↗'}
+              </Text>
+            </Pressable>
+          ) : (
+            <Text style={styles.noSite}>No website listed</Text>
+          )}
+          {directions ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Directions to ${item.title}`}
+              onPress={() => openExternal(directions)}
+              style={({ pressed }) => [styles.actionGhost, pressed && styles.pressed]}
+            >
+              <Text style={styles.actionGhostText}>Directions ↗</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
     </View>
   );
@@ -181,6 +184,23 @@ const styles = StyleSheet.create({
   sub: {
     color: colors.textMuted,
     fontSize: font.size.sm,
+  },
+  desc: {
+    color: colors.text,
+    fontSize: font.size.sm,
+    lineHeight: 19,
+    marginTop: 2,
+  },
+  why: {
+    color: colors.textFaint,
+    fontSize: font.size.xs,
+    fontStyle: 'italic',
+  },
+  noSite: {
+    color: colors.textFaint,
+    fontSize: font.size.sm,
+    fontStyle: 'italic',
+    alignSelf: 'center',
   },
   actions: {
     flexDirection: 'row',

@@ -29,6 +29,14 @@ export interface PlanRequest {
   modifier?: PlanModifier;
   /** Bumped on each explicit reshuffle so the same inputs yield a fresh plan. */
   nonce?: number;
+  /**
+   * Candidate ids the planner must NOT reuse (already suggested or swapped away
+   * for this day). A live LLM planner must receive this as an exclusion list in
+   * its prompt: "Do not reuse any candidate from the excluded list below."
+   */
+  excludeIds?: string[];
+  /** Holiday context for the date, when it lands on a notable NYC day. */
+  holiday?: { name: string; boostTags: string[] } | null;
 }
 
 export interface Planner {

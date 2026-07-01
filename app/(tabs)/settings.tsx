@@ -1,13 +1,14 @@
 // =============================================================================
 // OutNYC — settings (app/(tabs)/settings.tsx)
 // =============================================================================
-// Shows profile defaults, which API keys are detected (provider flags), a
-// notification permission action, and a "reset app" maintenance action.
+// Default preferences, a clear "where your picks come from" section, the
+// notification permission action, and reset. Copy stays user-friendly: no
+// technical jargon on this screen.
 // =============================================================================
 
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -18,10 +19,47 @@ import {
   Heading,
   LoadingView,
 } from '../../components/ui';
-import { PROVIDER_FLAG_LIST, anyLive } from '../../lib/config';
+import { providerFlags } from '../../lib/config';
+import { confirmDestructive } from '../../lib/confirm';
 import { ensureNotificationPermission } from '../../lib/notifications';
 import { useStore } from '../../lib/store';
-import { colors, radius, spacing } from '../../lib/theme';
+import { colors, font, radius, spacing } from '../../lib/theme';
+
+type SourceStatus = 'On' | 'Coming soon' | 'Planned';
+
+/** Where picks come from, in plain language. Statuses flip on as feeds go live. */
+const DATA_SOURCES: { name: string; detail: string; status: SourceStatus }[] = [
+  {
+    name: 'Curated NYC guide',
+    detail: 'Hand-picked venues, classics, and happenings across the city, built in.',
+    status: 'On',
+  },
+  {
+    name: 'Your bucket list',
+    detail: 'Anything you add gets woven into your week when it fits.',
+    status: 'On',
+  },
+  {
+    name: 'Live concerts, shows, and tickets',
+    detail: 'Real listings with dates and ticket links.',
+    status: providerFlags.events.isLive ? 'On' : 'Coming soon',
+  },
+  {
+    name: 'Live restaurant and bar listings',
+    detail: 'Fresh spots with hours, photos, and reviews.',
+    status: providerFlags.places.isLive ? 'On' : 'Coming soon',
+  },
+  {
+    name: 'Pop-ups and one-off happenings',
+    detail: 'Flash events, markets, and openings that are not regular venues.',
+    status: 'Planned',
+  },
+  {
+    name: 'Community boards and groups',
+    detail: 'Neighborhood happenings sourced from local groups and boards.',
+    status: 'Planned',
+  },
+];
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -39,26 +77,22 @@ export default function SettingsScreen() {
     const granted = await ensureNotificationPermission();
     setNotifyMsg(
       granted
-        ? 'Notifications are enabled. Lock in a plan to get nudges.'
-        : 'Notifications are off. Enable them in iOS Settings to get nudges.',
+        ? 'Reminders are on. Lock in a plan to get a nudge before each stop.'
+        : 'Reminders are off. Turn them on in your phone settings to get nudges.',
     );
   }
 
   function onReset() {
-    Alert.alert(
-      'Reset OutNYC?',
-      'This clears your profile, availability, bucket list, and plans on this device.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset',
-          style: 'destructive',
-          onPress: async () => {
-            await resetApp();
-            router.replace('/');
-          },
-        },
-      ],
+    confirmDestructive(
+      'Start fresh?',
+      'This clears your preferences, free time, bucket list, and plans on this device.',
+      'Reset',
+      () => {
+        void (async () => {
+          await resetApp();
+          router.replace('/');
+        })();
+      },
     );
   }
 
@@ -71,18 +105,23 @@ export default function SettingsScreen() {
       ]}
     >
       <Card>
-        <Heading>Your defaults</Heading>
-        <Body muted>Party of {profile.partySize}</Body>
-        <Body muted>
-          {profile.defaultNeighborhoods.join(', ') || 'No neighborhoods set'}
-        </Body>
-        {profile.homeBase ? <Body muted>Home base: {profile.homeBase}</Body> : null}
-        <Body muted>
-          Price {'$'.repeat(profile.priceRange.min)} – {'$'.repeat(profile.priceRange.max)}
-        </Body>
-        <Body muted>{profile.interests.join(', ') || 'No interests set'}</Body>
+        <Heading>Your usual preferences</Heading>
+        <Caption muted>
+          Starting points for every day. Change any of them for a single day
+          right on the calendar.
+        </Caption>
+        <View style={styles.spaced}>
+          <Body muted>Party of {profile.partySize}</Body>
+          <Body muted>
+            {profile.defaultNeighborhoods.join(', ') || 'No neighborhoods set'}
+          </Body>
+          <Body muted>
+            Price {'$'.repeat(profile.priceRange.min)} to {'$'.repeat(profile.priceRange.max)}
+          </Body>
+          <Body muted>{profile.interests.join(', ') || 'No interests set'}</Body>
+        </View>
         <Button
-          label="Edit preferences"
+          label="Edit defaults"
           variant="secondary"
           onPress={() => router.push({ pathname: '/onboarding', params: { edit: '1' } })}
           style={styles.spaced}
@@ -90,23 +129,29 @@ export default function SettingsScreen() {
       </Card>
 
       <Card>
-        <Heading>Data sources</Heading>
+        <Heading>Where your picks come from</Heading>
         <Caption muted>
-          {anyLive
-            ? 'Some live providers are configured.'
-            : 'Running on mock/seed data. Add keys to a local .env to go live (see .env.example).'}
+          Every plan is built from these sources. More live feeds are on the
+          way, and your plans get better as each one turns on.
         </Caption>
-        <View style={styles.flagList}>
-          {PROVIDER_FLAG_LIST.map((flag) => (
-            <View key={flag.name} style={styles.flagRow}>
-              <Body>{flag.name}</Body>
+        <View style={styles.sourceList}>
+          {DATA_SOURCES.map((src) => (
+            <View key={src.name} style={styles.sourceRow}>
+              <View style={styles.sourceText}>
+                <Body>{src.name}</Body>
+                <Caption muted>{src.detail}</Caption>
+              </View>
               <View
                 style={[
                   styles.badge,
-                  flag.isLive ? styles.badgeLive : styles.badgeMock,
+                  src.status === 'On'
+                    ? styles.badgeOn
+                    : src.status === 'Coming soon'
+                      ? styles.badgeSoon
+                      : styles.badgePlanned,
                 ]}
               >
-                <Caption>{flag.isLive ? 'Live' : 'Mock'}</Caption>
+                <Caption>{src.status}</Caption>
               </View>
             </View>
           ))}
@@ -114,13 +159,13 @@ export default function SettingsScreen() {
       </Card>
 
       <Card>
-        <Heading>Notifications</Heading>
+        <Heading>Reminders</Heading>
         <Caption muted>
-          Local-only reminders before each stop when you lock in a plan. No
-          accounts, no push servers.
+          Get a nudge before each stop when you lock in a plan. Everything stays
+          on your phone.
         </Caption>
         <Button
-          label="Enable notifications"
+          label="Turn on reminders"
           variant="secondary"
           onPress={onEnableNotifications}
           style={styles.spaced}
@@ -129,8 +174,8 @@ export default function SettingsScreen() {
       </Card>
 
       <Card>
-        <Heading>Maintenance</Heading>
-        <Caption muted>Clear all on-device data and start fresh.</Caption>
+        <Heading>Start fresh</Heading>
+        <Caption muted>Clear everything on this device and begin again.</Caption>
         <Button
           label="Reset app"
           variant="ghost"
@@ -154,14 +199,19 @@ const styles = StyleSheet.create({
   spaced: {
     marginTop: spacing.sm,
   },
-  flagList: {
-    gap: spacing.sm,
+  sourceList: {
+    gap: spacing.md,
     marginTop: spacing.sm,
   },
-  flagRow: {
+  sourceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+  },
+  sourceText: {
+    flex: 1,
+    gap: 2,
   },
   badge: {
     paddingHorizontal: spacing.sm,
@@ -169,11 +219,15 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     borderWidth: 1,
   },
-  badgeLive: {
+  badgeOn: {
     backgroundColor: colors.secondarySoft,
     borderColor: colors.success,
   },
-  badgeMock: {
+  badgeSoon: {
+    backgroundColor: colors.goldSoft,
+    borderColor: colors.gold,
+  },
+  badgePlanned: {
     backgroundColor: colors.surfaceAlt,
     borderColor: colors.border,
   },

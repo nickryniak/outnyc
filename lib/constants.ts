@@ -1,11 +1,12 @@
 // =============================================================================
 // OutNYC — NYC seed data (lib/constants.ts)
 // =============================================================================
-// The mock/seed dataset that powers the entire zero-key experience.
+// The curated NYC guide that powers the zero-key experience.
 //   - SEED_PROFILE mirrors the profile seed in supabase/migrations/0001_init.sql
 //   - BUCKET_SEED  mirrors the bucket_list seed in the same migration
 //   - SEED_EVENTS / SEED_PLACES feed the heuristic planner and providers
-// Keep BUCKET_SEED and SEED_PROFILE in sync with the SQL seed.
+// Timing tags the planner understands: 'coffee', 'brunch', 'late-night',
+// 'rooftop'. Keep BUCKET_SEED and SEED_PROFILE in sync with the SQL seed.
 // =============================================================================
 
 import type { BucketItem, Candidate, Profile } from './types';
@@ -82,7 +83,7 @@ export const BUCKET_SEED: BucketItem[] = [
   {
     id: 'seed-bucket-3',
     title: 'Smorgasburg on a Saturday',
-    note: 'Go hungry; cash + card.',
+    note: 'Go hungry; cash and card.',
     neighborhood: 'Williamsburg',
     priceTier: 2,
     tags: ['food', 'outdoors'],
@@ -95,7 +96,7 @@ export const BUCKET_SEED: BucketItem[] = [
     note: 'For after a show.',
     neighborhood: 'East Village',
     priceTier: 2,
-    tags: ['food'],
+    tags: ['food', 'late-night'],
     done: false,
     sortOrder: 4,
   },
@@ -105,7 +106,7 @@ export const BUCKET_SEED: BucketItem[] = [
     note: 'Sunset views over the harbor.',
     neighborhood: 'Financial District',
     priceTier: 3,
-    tags: ['bar'],
+    tags: ['bar', 'rooftop'],
     done: false,
     sortOrder: 5,
   },
@@ -135,7 +136,7 @@ export const BUCKET_SEED: BucketItem[] = [
 export const SEED_EVENTS: Candidate[] = [
   {
     id: 'evt-vanguard',
-    name: 'Live Jazz — Village Vanguard',
+    name: 'Live Jazz at the Village Vanguard',
     kind: 'event',
     neighborhood: 'West Village',
     priceTier: 3,
@@ -145,11 +146,12 @@ export const SEED_EVENTS: Candidate[] = [
     lng: -74.0008,
     address: '178 7th Ave S, New York, NY',
     bookingUrl: 'https://villagevanguard.com/',
+    description: 'The most storied basement jazz room in the city, in business since 1935.',
     tags: ['live music'],
   },
   {
     id: 'evt-comedy-cellar',
-    name: 'Stand-up — Comedy Cellar',
+    name: 'Stand-up at the Comedy Cellar',
     kind: 'event',
     neighborhood: 'West Village',
     priceTier: 2,
@@ -159,11 +161,12 @@ export const SEED_EVENTS: Candidate[] = [
     lng: -74.0007,
     address: '117 MacDougal St, New York, NY',
     bookingUrl: 'https://www.comedycellar.com/',
+    description: 'Low-ceilinged MacDougal Street club where big names drop in unannounced.',
     tags: ['comedy'],
   },
   {
     id: 'evt-bowery',
-    name: 'Indie Show — Bowery Ballroom',
+    name: 'Indie Show at Bowery Ballroom',
     kind: 'event',
     neighborhood: 'Lower East Side',
     priceTier: 2,
@@ -173,11 +176,12 @@ export const SEED_EVENTS: Candidate[] = [
     lng: -73.9937,
     address: '6 Delancey St, New York, NY',
     bookingUrl: 'https://www.boweryballroom.com/',
+    description: 'Beloved 575-cap room with balcony views and a knack for great bookings.',
     tags: ['live music'],
   },
   {
     id: 'evt-brooklyn-bowl',
-    name: 'Late Set — Brooklyn Bowl',
+    name: 'Late Set at Brooklyn Bowl',
     kind: 'event',
     neighborhood: 'Williamsburg',
     priceTier: 2,
@@ -187,11 +191,12 @@ export const SEED_EVENTS: Candidate[] = [
     lng: -73.9576,
     address: '61 Wythe Ave, Brooklyn, NY',
     bookingUrl: 'https://www.brooklynbowl.com/',
+    description: 'Bowling lanes, fried chicken, and a serious stage under one Williamsburg roof.',
     tags: ['live music'],
   },
   {
     id: 'evt-film-forum',
-    name: 'Repertory Film — Film Forum',
+    name: 'Repertory Film at Film Forum',
     kind: 'event',
     neighborhood: 'SoHo',
     priceTier: 2,
@@ -201,6 +206,7 @@ export const SEED_EVENTS: Candidate[] = [
     lng: -74.0048,
     address: '209 W Houston St, New York, NY',
     bookingUrl: 'https://filmforum.org/',
+    description: 'Nonprofit cinema on Houston Street known for sharp repertory programming.',
     tags: ['film', 'art'],
   },
   {
@@ -215,11 +221,12 @@ export const SEED_EVENTS: Candidate[] = [
     lng: -74.0048,
     address: 'The High Line, New York, NY',
     bookingUrl: 'https://www.thehighline.org/',
+    description: 'Elevated park with rotating public art and Hudson views, best near golden hour.',
     tags: ['outdoors', 'art', 'walk'],
   },
   {
     id: 'evt-mercury',
-    name: 'Showcase — Mercury Lounge',
+    name: 'Showcase at Mercury Lounge',
     kind: 'event',
     neighborhood: 'Lower East Side',
     priceTier: 2,
@@ -229,6 +236,7 @@ export const SEED_EVENTS: Candidate[] = [
     lng: -73.9874,
     address: '217 E Houston St, New York, NY',
     bookingUrl: 'https://www.mercuryloungenyc.com/',
+    description: 'Tiny LES rock room where breakout acts play before the big stages.',
     tags: ['live music'],
   },
   // ---- Daytime activities (flexible timing; fill morning/afternoon windows) --
@@ -243,6 +251,7 @@ export const SEED_EVENTS: Candidate[] = [
     lng: -74.0089,
     address: '99 Gansevoort St, New York, NY',
     bookingUrl: 'https://whitney.org/',
+    description: 'American art in a Renzo Piano building with terraces over the High Line.',
     tags: ['art'],
   },
   {
@@ -256,6 +265,7 @@ export const SEED_EVENTS: Candidate[] = [
     lng: -74.0048,
     address: 'The High Line, New York, NY',
     bookingUrl: 'https://www.thehighline.org/',
+    description: 'A 1.5 mile stroll on the old rail line from Gansevoort to Hudson Yards.',
     tags: ['outdoors', 'walk', 'art'],
   },
   {
@@ -268,6 +278,7 @@ export const SEED_EVENTS: Candidate[] = [
     lat: 40.7308,
     lng: -73.9973,
     address: 'Washington Square Park, New York, NY',
+    description: 'The Village living room: buskers, chess hustlers, and the arch.',
     tags: ['outdoors', 'walk'],
   },
   {
@@ -281,11 +292,12 @@ export const SEED_EVENTS: Candidate[] = [
     lng: -73.99,
     address: '103 Orchard St, New York, NY',
     bookingUrl: 'https://www.tenement.org/',
+    description: 'Guided tours through preserved immigrant apartments on Orchard Street.',
     tags: ['art', 'walk'],
   },
   {
     id: 'act-brooklyn-bridge-park',
-    name: 'Brooklyn Bridge Park + Jane’s Carousel',
+    name: 'Brooklyn Bridge Park and Jane’s Carousel',
     kind: 'activity',
     neighborhood: 'DUMBO',
     priceTier: 1,
@@ -293,6 +305,7 @@ export const SEED_EVENTS: Candidate[] = [
     lat: 40.7024,
     lng: -73.9959,
     address: 'Brooklyn Bridge Park, Brooklyn, NY',
+    description: 'Waterfront lawns and a restored 1922 carousel under the bridge.',
     tags: ['outdoors', 'walk'],
   },
   {
@@ -305,6 +318,7 @@ export const SEED_EVENTS: Candidate[] = [
     lat: 40.7057,
     lng: -73.9235,
     address: 'Troutman St & St Nicholas Ave, Brooklyn, NY',
+    description: 'Blocks of large-scale murals from a rotating cast of street artists.',
     tags: ['art', 'walk', 'outdoors'],
   },
   {
@@ -318,11 +332,12 @@ export const SEED_EVENTS: Candidate[] = [
     lng: -73.9242,
     address: '36-01 35th Ave, Astoria, NY',
     bookingUrl: 'https://movingimage.org/',
+    description: 'Film and TV history in Astoria, from Muppets to movie cameras.',
     tags: ['film', 'art'],
   },
   {
     id: 'act-apollo',
-    name: 'Apollo Theater Walk + Harlem Stroll',
+    name: 'Apollo Theater Walk and Harlem Stroll',
     kind: 'activity',
     neighborhood: 'Harlem',
     priceTier: 1,
@@ -330,11 +345,12 @@ export const SEED_EVENTS: Candidate[] = [
     lat: 40.8099,
     lng: -73.9503,
     address: '253 W 125th St, New York, NY',
+    description: 'Walk 125th Street past the Apollo marquee and Harlem landmarks.',
     tags: ['walk', 'live music'],
   },
   {
     id: 'act-battery-ferry',
-    name: 'Staten Island Ferry + Battery Park',
+    name: 'Staten Island Ferry and Battery Park',
     kind: 'activity',
     neighborhood: 'Financial District',
     priceTier: 1,
@@ -342,11 +358,12 @@ export const SEED_EVENTS: Candidate[] = [
     lat: 40.7013,
     lng: -74.0134,
     address: 'Whitehall Terminal, New York, NY',
+    description: 'A free harbor crossing with Statue of Liberty views, then the Battery.',
     tags: ['outdoors', 'walk'],
   },
   {
     id: 'act-transmitter-park',
-    name: 'Transmitter Park + Greenpoint Waterfront',
+    name: 'Transmitter Park and Greenpoint Waterfront',
     kind: 'activity',
     neighborhood: 'Greenpoint',
     priceTier: 1,
@@ -354,11 +371,12 @@ export const SEED_EVENTS: Candidate[] = [
     lat: 40.7305,
     lng: -73.9585,
     address: 'WNW Transmitter Park, Brooklyn, NY',
+    description: 'Small waterfront park with a straight shot view of the midtown skyline.',
     tags: ['outdoors', 'walk'],
   },
   {
     id: 'act-soho-galleries',
-    name: 'SoHo Galleries + Shopping Stroll',
+    name: 'SoHo Galleries and Shopping Stroll',
     kind: 'activity',
     neighborhood: 'SoHo',
     priceTier: 2,
@@ -366,12 +384,13 @@ export const SEED_EVENTS: Candidate[] = [
     lat: 40.7233,
     lng: -74.0011,
     address: 'Broadway & Prince St, New York, NY',
+    description: 'Cast-iron blocks of galleries and flagships between Houston and Canal.',
     tags: ['art', 'walk'],
   },
   // ---- Fixed-time daytime events ------------------------------------------
   {
     id: 'evt-film-matinee',
-    name: 'Matinee — Film Forum',
+    name: 'Matinee at Film Forum',
     kind: 'event',
     neighborhood: 'SoHo',
     priceTier: 2,
@@ -381,6 +400,7 @@ export const SEED_EVENTS: Candidate[] = [
     lng: -74.0048,
     address: '209 W Houston St, New York, NY',
     bookingUrl: 'https://filmforum.org/',
+    description: 'An afternoon repertory screening at the Houston Street nonprofit cinema.',
     tags: ['film', 'art'],
   },
   {
@@ -394,6 +414,7 @@ export const SEED_EVENTS: Candidate[] = [
     lat: 40.7033,
     lng: -73.9903,
     address: '80 Pearl St, Brooklyn, NY',
+    description: 'Weekend market of vintage, records, and local makers under the arches.',
     tags: ['outdoors', 'walk'],
   },
 ];
@@ -410,6 +431,7 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7338,
     lng: -74.0027,
     address: '51 Grove St, New York, NY',
+    description: 'The Village trattoria everyone loves; go early for the svizzerina.',
     tags: ['food'],
   },
   {
@@ -422,7 +444,8 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7305,
     lng: -74.0023,
     address: '7 Carmine St, New York, NY',
-    tags: ['food'],
+    description: 'The benchmark New York slice, folded and eaten standing up.',
+    tags: ['food', 'late-night'],
   },
   {
     id: 'plc-katz',
@@ -434,6 +457,7 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7223,
     lng: -73.9874,
     address: '205 E Houston St, New York, NY',
+    description: 'Pastrami on rye at the 1888 deli; take a ticket and do not lose it.',
     tags: ['food'],
   },
   {
@@ -446,7 +470,8 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7307,
     lng: -73.9903,
     address: '65 4th Ave, New York, NY',
-    tags: ['food'],
+    description: 'Tonkotsu ramen with a rowdy irasshaimase welcome; expect a wait.',
+    tags: ['food', 'late-night'],
   },
   {
     id: 'plc-slice-1',
@@ -458,7 +483,8 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7322,
     lng: -73.9866,
     address: '321 E 14th St, New York, NY',
-    tags: ['food'],
+    description: 'The famously heavy artichoke slice, best after a show.',
+    tags: ['food', 'late-night'],
   },
   {
     id: 'plc-attaboy',
@@ -470,6 +496,7 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7184,
     lng: -73.9916,
     address: '134 Eldridge St, New York, NY',
+    description: 'No-menu cocktails behind an unmarked Eldridge Street door.',
     tags: ['bar'],
   },
   {
@@ -482,11 +509,12 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7333,
     lng: -74.0061,
     address: '510 Hudson St, New York, NY',
+    description: 'Speakeasy-style West Village institution with late kitchen hours.',
     tags: ['bar'],
   },
   {
     id: 'plc-westlight',
-    name: 'Westlight (Rooftop)',
+    name: 'Westlight',
     kind: 'bar',
     neighborhood: 'Williamsburg',
     priceTier: 3,
@@ -494,7 +522,8 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7223,
     lng: -73.9573,
     address: '111 N 12th St, Brooklyn, NY',
-    tags: ['bar'],
+    description: '22nd-floor rooftop bar with a full sweep of the Manhattan skyline.',
+    tags: ['bar', 'rooftop'],
   },
   {
     id: 'plc-llama-inn',
@@ -506,6 +535,7 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7186,
     lng: -73.9609,
     address: '50 Withers St, Brooklyn, NY',
+    description: 'Inventive Peruvian under the BQE; the beef tenderloin skewers travel far.',
     tags: ['food'],
   },
   {
@@ -518,11 +548,12 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7224,
     lng: -73.9982,
     address: '80 Spring St, New York, NY',
-    tags: ['food'],
+    description: 'The grand SoHo brasserie; steak frites and people-watching since 1997.',
+    tags: ['food', 'brunch'],
   },
   {
     id: 'plc-time-out',
-    name: 'Time Out Market (DUMBO)',
+    name: 'Time Out Market',
     kind: 'restaurant',
     neighborhood: 'DUMBO',
     priceTier: 2,
@@ -530,6 +561,7 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7025,
     lng: -73.9903,
     address: '55 Water St, Brooklyn, NY',
+    description: 'DUMBO food hall with rooftop seating and skyline views.',
     tags: ['food'],
   },
   {
@@ -542,6 +574,7 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7033,
     lng: -74.0114,
     address: '30 Water St, New York, NY',
+    description: 'Award-winning Irish pub on Water Street; sawdust downstairs, cocktails up.',
     tags: ['bar'],
   },
   // ---- Broader neighborhood coverage + daytime brunch/coffee ---------------
@@ -555,6 +588,7 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.742,
     lng: -74.0061,
     address: '75 9th Ave, New York, NY',
+    description: 'Indoor market in the old Nabisco factory; tacos, lobster, and more.',
     tags: ['food'],
   },
   {
@@ -567,7 +601,8 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7228,
     lng: -73.9985,
     address: '224 Lafayette St, New York, NY',
-    tags: ['food'],
+    description: 'Mediterranean-ish all-day cafe beloved for green shakshuka at brunch.',
+    tags: ['food', 'brunch'],
   },
   {
     id: 'plc-buvette',
@@ -579,7 +614,8 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7333,
     lng: -74.0037,
     address: '42 Grove St, New York, NY',
-    tags: ['food'],
+    description: 'Tiny Grove Street gastrotheque; steamed eggs in the morning, wine at night.',
+    tags: ['food', 'brunch'],
   },
   {
     id: 'plc-grimaldis',
@@ -591,6 +627,7 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7024,
     lng: -73.9932,
     address: '1 Front St, Brooklyn, NY',
+    description: 'Coal-oven pies under the Brooklyn Bridge; the line moves fast.',
     tags: ['food'],
   },
   {
@@ -603,6 +640,7 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.8085,
     lng: -73.9454,
     address: '310 Lenox Ave, New York, NY',
+    description: 'Marcus Samuelsson’s Lenox Avenue dining room with live music downstairs.',
     tags: ['food', 'live music'],
   },
   {
@@ -615,7 +653,8 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.8082,
     lng: -73.9442,
     address: '328 Malcolm X Blvd, New York, NY',
-    tags: ['food'],
+    description: 'Harlem’s queen of soul food since 1962; go for the fried chicken.',
+    tags: ['food', 'brunch'],
   },
   {
     id: 'plc-taverna-kyclades',
@@ -627,6 +666,7 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7739,
     lng: -73.9109,
     address: '33-07 Ditmars Blvd, Astoria, NY',
+    description: 'Astoria Greek seafood standby; the grilled octopus earns the wait.',
     tags: ['food'],
   },
   {
@@ -639,6 +679,7 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7702,
     lng: -73.9146,
     address: '29-19 24th Ave, Astoria, NY',
+    description: 'Czech beer garden from 1910 with long tables under the trees.',
     tags: ['bar', 'outdoors'],
   },
   {
@@ -648,9 +689,10 @@ export const SEED_PLACES: Candidate[] = [
     neighborhood: 'Bushwick',
     priceTier: 2,
     durationMin: 90,
-    lat: 40.7050,
+    lat: 40.705,
     lng: -73.9337,
     address: '261 Moore St, Brooklyn, NY',
+    description: 'The Bushwick pizza pioneer with a tiki backyard and wood-fired pies.',
     tags: ['food'],
   },
   {
@@ -664,6 +706,7 @@ export const SEED_PLACES: Candidate[] = [
     lng: -73.9233,
     address: '2 Wyckoff Ave, Brooklyn, NY',
     bookingUrl: 'https://houseofyes.org/',
+    description: 'Circus-meets-nightclub warehouse; themed nights and aerialists.',
     tags: ['bar', 'live music'],
   },
   {
@@ -676,6 +719,7 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7296,
     lng: -73.9585,
     address: '60 Greenpoint Ave, Brooklyn, NY',
+    description: 'Wood-fired Greenpoint pizza den famous for the hot-honey Hellboy.',
     tags: ['food'],
   },
   {
@@ -688,7 +732,8 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7241,
     lng: -73.9509,
     address: '727 Manhattan Ave, Brooklyn, NY',
-    tags: ['food'],
+    description: 'Old-school Greenpoint donut counter; get the red velvet early.',
+    tags: ['food', 'coffee'],
   },
   {
     id: 'plc-abraco',
@@ -700,7 +745,8 @@ export const SEED_PLACES: Candidate[] = [
     lat: 40.7273,
     lng: -73.9852,
     address: '81 E 7th St, New York, NY',
-    tags: ['food'],
+    description: 'Espresso and olive oil cake at a tiny East 7th Street counter.',
+    tags: ['food', 'coffee'],
   },
 ];
 

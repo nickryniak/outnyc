@@ -1,24 +1,23 @@
 // =============================================================================
 // OutNYC — deterministic heuristic planner (lib/planner/heuristicPlanner.ts)
 // =============================================================================
-// The DEFAULT planner. No LLM, no network, no key. It:
+// The DEFAULT planner. No network, no key. It:
 //   - filters candidates by price range and (softly) by neighborhood
+//   - EXCLUDES candidates on req.excludeIds (never-repeat regenerates); if the
+//     exclusion starves the pools it widens the price filter one notch, and
+//     only reuses old picks once the whole catalog is exhausted
+//   - gates food/drinks to sensible hours (coffee mornings, lunch midday,
+//     dinner evenings, drinks at night) and fills the rest with activities
 //   - weaves in OPEN bucket items that fit window/price/neighborhood
-//   - packs an ordered, walkable itinerary inside the window with realistic gaps
-//   - inserts "walk" connectors between neighborhood hops
-//   - applies the reshuffle modifier so output DIFFERS per modifier
+//   - boosts candidates matching the day's holiday context (e.g. July 4th)
+//   - packs an ordered, walkable itinerary and inserts walk connectors
+//   - writes a one-line "why this pick" note on every stop
 //
-// Determinism: given identical inputs (including modifier) it returns the same
-// stop selection/order, so reshuffle with the SAME modifier is stable, while a
-// DIFFERENT modifier yields a different plan. A tie-break "seed" mixes in the
-// modifier + date so re-running across days/modifiers reshuffles selection.
+// Determinism: identical inputs (including modifier + nonce) return the same
+// plan; the nonce is bumped per reshuffle for fresh variety.
 // =============================================================================
 
-import {
-  fromMinutes,
-  toMinutes,
-  windowMinutes,
-} from '../time';
+import { fromMinutes, toMinutes, windowMinutes } from '../time';
 import type {
   BucketItem,
   Candidate,
@@ -30,43 +29,28 @@ import type {
   PriceTier,
 } from '../types';
 import type { Planner, PlanRequest } from './planner';
+import {
+  allowedStart,
+  candidateDuration,
+  hash,
+  mealSlotAt,
+  rebuildConnectors,
+  type MealSlot,
+} from './slotUtils';
 
 // Transit/seating buffer inserted between stops (minutes).
 const GAP_MIN = 15;
-// Default duration for an event/activity without an explicit end (minutes).
-const DEFAULT_EVENT_MIN = 90;
-// Default duration for a place without an explicit duration (minutes).
-const DEFAULT_PLACE_MIN = 60;
-
-/** Deterministic small integer hash of a string (for stable tie-breaks). */
-function hash(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i += 1) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
+// Most bars a single window will schedule.
+const MAX_BARS = 2;
 
 function withinPrice(tier: PriceTier | undefined, price: PriceRange): boolean {
   if (tier == null) return true; // unknown price never excludes
   return tier >= price.min && tier <= price.max;
 }
 
-/** Effective duration (minutes) of a candidate within the window. */
-function candidateDuration(c: Candidate): number {
-  if (c.startTime && c.endTime) {
-    return Math.max(0, toMinutes(c.endTime) - toMinutes(c.startTime));
-  }
-  if (c.durationMin && c.durationMin > 0) return c.durationMin;
-  return c.kind === 'event' || c.kind === 'activity'
-    ? DEFAULT_EVENT_MIN
-    : DEFAULT_PLACE_MIN;
-}
-
-/** Tag-overlap count between a candidate's tags and the user's interests. */
-function interestScore(tags: string[], interests: string[]): number {
-  const set = new Set(interests.map((t) => t.toLowerCase()));
+/** Tag-overlap count between a candidate's tags and a tag list. */
+function overlap(tags: string[], wanted: string[]): number {
+  const set = new Set(wanted.map((t) => t.toLowerCase()));
   return tags.reduce((n, t) => (set.has(t.toLowerCase()) ? n + 1 : n), 0);
 }
 
@@ -92,11 +76,7 @@ interface Scored {
 }
 
 /** Score + sort candidates for a given modifier (deterministic). */
-function rankCandidates(
-  candidates: Candidate[],
-  req: PlanRequest,
-  seed: number,
-): Scored[] {
+function rankCandidates(candidates: Candidate[], req: PlanRequest, seed: number): Scored[] {
   const nbset = new Set(req.neighborhoods.map((n) => n.toLowerCase()));
   return candidates
     .map((candidate) => {
@@ -106,7 +86,11 @@ function rankCandidates(
         score += 5;
       }
       // Interest overlap.
-      score += interestScore(candidate.tags, req.interests) * 2;
+      score += overlap(candidate.tags, req.interests) * 2;
+      // Holiday context: lean into the day (e.g. rooftops on July 4th).
+      if (req.holiday) {
+        score += overlap(candidate.tags, req.holiday.boostTags) * 4;
+      }
       // Modifier kind weighting.
       score += kindWeight(candidate.kind, req.modifier) * 3;
       // "cheaper" prefers lower tiers.
@@ -115,7 +99,7 @@ function rankCandidates(
       }
       // Deterministic tie-break that varies by modifier+date so reshuffle
       // across modifiers reorders selection.
-      const jitter = (hash(candidate.id + ':' + seed) % 7);
+      const jitter = hash(candidate.id + ':' + seed) % 7;
       // "surprise" leans heavily on jitter; an explicit reshuffle (nonce > 0)
       // also shuffles noticeably, while the first generation stays near-stable.
       const jitterWeight = req.modifier === 'surprise' ? 2 : req.nonce ? 1.3 : 0.1;
@@ -138,19 +122,30 @@ function bucketToCandidate(b: BucketItem): Candidate {
     neighborhood: b.neighborhood,
     priceTier: b.priceTier,
     durationMin: 75,
+    description: b.note ?? 'One of your bucket-list picks.',
     tags: b.tags,
   };
 }
 
-function makeWalk(order: number, from: string, to: string): Omit<PlanItem, 'startTime' | 'endTime'> {
-  return {
-    id: `walk-${order}`,
-    order,
-    kind: 'walk',
-    title: `Walk: ${from} → ${to}`,
-    neighborhood: to,
-    note: 'Short walk between stops.',
-  };
+/** One-line "why this pick" (no em dashes; joined with a middot). */
+function whyNote(c: Candidate, req: PlanRequest): string | undefined {
+  const reasons: string[] = [];
+  if (c.kind === 'bucket') reasons.push('From your list');
+  if (req.holiday && overlap(c.tags, req.holiday.boostTags) > 0) {
+    reasons.push(`A good ${req.holiday.name} pick`);
+  }
+  const interestHits = c.tags.filter((t) =>
+    req.interests.some((i) => i.toLowerCase() === t.toLowerCase()),
+  );
+  if (interestHits.length > 0) reasons.push(`Matches ${interestHits[0]}`);
+  if (
+    c.neighborhood &&
+    req.neighborhoods.some((n) => n.toLowerCase() === c.neighborhood!.toLowerCase())
+  ) {
+    reasons.push(`In your ${c.neighborhood} picks`);
+  }
+  if (reasons.length === 0) return undefined;
+  return reasons.slice(0, 2).join(' · ');
 }
 
 export class HeuristicPlanner implements Planner {
@@ -162,28 +157,52 @@ export class HeuristicPlanner implements Planner {
     const winEnd = toMinutes(req.window.end);
     const totalMin = windowMinutes(req.window);
     const seed = hash(`${req.date}:${req.modifier ?? 'default'}:${req.nonce ?? 0}`);
+    const excluded = new Set(req.excludeIds ?? []);
 
     // The "cheaper" modifier tightens the ceiling so pricey stops (including
     // fixed events) drop out, not just get down-weighted.
-    const effPrice: PriceRange =
+    const basePrice: PriceRange =
       req.modifier === 'cheaper'
         ? { min: req.price.min, max: Math.min(req.price.max, req.price.min + 1) as PriceTier }
         : req.price;
 
-    // Build candidate pools.
-    const openBuckets = req.bucketList
-      .filter((b) => !b.done)
-      .filter((b) => withinPrice(b.priceTier, effPrice))
-      .map(bucketToCandidate);
+    /** Build the candidate pools for a price range, honoring the exclusions. */
+    const buildPools = (price: PriceRange, honorExclusions: boolean) => {
+      const skip = (c: Candidate) => honorExclusions && excluded.has(c.id);
+      return {
+        buckets: req.bucketList
+          .filter((b) => !b.done)
+          .filter((b) => withinPrice(b.priceTier, price))
+          .map(bucketToCandidate)
+          .filter((c) => !skip(c)),
+        events: req.events.filter((c) => withinPrice(c.priceTier, price) && !skip(c)),
+        places: req.places.filter((c) => withinPrice(c.priceTier, price) && !skip(c)),
+      };
+    };
 
-    const eventPool = req.events.filter((c) => withinPrice(c.priceTier, effPrice));
-    const placePool = req.places.filter((c) => withinPrice(c.priceTier, effPrice));
+    // Never-repeat with graceful widening: exclusions first; if the fresh pools
+    // are starved, widen the price filter one notch, then all the way, and only
+    // when the whole catalog is exhausted allow previously seen candidates back.
+    let pools = buildPools(basePrice, true);
+    if (pools.places.length < 3 || pools.events.length < 2) {
+      const widened: PriceRange = {
+        min: Math.max(1, basePrice.min - 1) as PriceTier,
+        max: Math.min(4, basePrice.max + 1) as PriceTier,
+      };
+      pools = buildPools(widened, true);
+      if (pools.places.length + pools.events.length < 3) {
+        pools = buildPools({ min: 1, max: 4 }, true);
+        if (pools.places.length + pools.events.length < 3) {
+          pools = buildPools({ min: 1, max: 4 }, false);
+        }
+      }
+    }
 
     // Rank each pool. Bucket items get a placement priority boost by ranking
     // them first and prepending the best fit.
-    const rankedBuckets = rankCandidates(openBuckets, req, seed);
-    const rankedEvents = rankCandidates(eventPool, req, seed);
-    const rankedPlaces = rankCandidates(placePool, req, seed);
+    const rankedBuckets = rankCandidates(pools.buckets, req, seed);
+    const rankedEvents = rankCandidates(pools.events, req, seed);
+    const rankedPlaces = rankCandidates(pools.places, req, seed);
 
     // Preference order: weave in one bucket item first (when it fits), then
     // alternate events/places by rank for variety.
@@ -208,38 +227,28 @@ export class HeuristicPlanner implements Planner {
 
     // Split into fixed-time events (must be anchored to their real slot inside
     // the window) and flexible fillers (buckets/places/timeless activities).
+    // A candidate with real start/end times that do NOT overlap the window is
+    // dropped outright: a 8pm show cannot be "moved" to a noon slot.
+    const hasTimes = (c: Candidate): boolean => !!c.startTime && !!c.endTime;
     const isFixed = (c: Candidate): boolean =>
-      !!c.startTime &&
-      !!c.endTime &&
-      toMinutes(c.endTime) > winStart &&
-      toMinutes(c.startTime) < winEnd;
+      hasTimes(c) &&
+      toMinutes(c.endTime as string) > winStart &&
+      toMinutes(c.startTime as string) < winEnd;
 
     const fixed = preference
       .filter(isFixed)
       .sort((a, b) => toMinutes(a.startTime as string) - toMinutes(b.startTime as string));
-    const flexible = preference.filter((c) => !isFixed(c));
+    const flexible = preference.filter((c) => !hasTimes(c));
 
     const items: PlanItem[] = [];
     let cursor = winStart;
     let order = 0;
-    let lastNeighborhood: string | undefined;
     const usedIds = new Set<string>();
+    const usedMealSlots = new Set<MealSlot>();
+    let barCount = 0;
 
-    /** Place a stop, inserting a walk connector on a neighborhood hop. */
+    /** Place a stop. Walk connectors are added by the post-pass. */
     const pushStop = (cand: Candidate, start: number, end: number): void => {
-      if (
-        lastNeighborhood &&
-        cand.neighborhood &&
-        cand.neighborhood !== lastNeighborhood &&
-        start - cursor >= GAP_MIN
-      ) {
-        items.push({
-          ...makeWalk(order, lastNeighborhood, cand.neighborhood),
-          startTime: fromMinutes(cursor),
-          endTime: fromMinutes(Math.min(cursor + GAP_MIN, start)),
-        });
-        order += 1;
-      }
       items.push({
         id: cand.id,
         order,
@@ -253,13 +262,27 @@ export class HeuristicPlanner implements Planner {
         lng: cand.lng,
         address: cand.address,
         bookingUrl: cand.bookingUrl,
+        description: cand.description,
+        note: whyNote(cand, req),
         sourceId: cand.kind === 'bucket' ? undefined : cand.id,
         bucketItemId: cand.kind === 'bucket' ? cand.id : undefined,
       });
       order += 1;
       usedIds.add(cand.id);
-      lastNeighborhood = cand.neighborhood ?? lastNeighborhood;
+      if (cand.kind === 'restaurant') usedMealSlots.add(mealSlotAt(start));
+      if (cand.kind === 'bar') barCount += 1;
       cursor = end + GAP_MIN;
+    };
+
+    /** True if a flexible candidate may be placed starting at `start`. */
+    const mayPlace = (cand: Candidate, start: number): boolean => {
+      if (!allowedStart(cand, start)) return false;
+      if (cand.kind === 'restaurant') {
+        const slot = mealSlotAt(start);
+        if (usedMealSlots.has(slot)) return false; // one restaurant per meal
+      }
+      if (cand.kind === 'bar' && barCount >= MAX_BARS) return false;
+      return true;
     };
 
     /**
@@ -277,21 +300,30 @@ export class HeuristicPlanner implements Planner {
           if (dur <= 0) continue;
           const start = cursor;
           const end = start + dur;
-          if (end + (reserveGap ? GAP_MIN : 0) <= limit) {
-            pushStop(cand, start, end);
-            progressed = true;
-            break;
-          }
+          if (end + (reserveGap ? GAP_MIN : 0) > limit) continue;
+          if (!mayPlace(cand, start)) continue;
+          pushStop(cand, start, end);
+          progressed = true;
+          break;
+        }
+        // If nothing fits at the cursor (e.g. mid-afternoon with only dinner
+        // spots left), nudge forward half an hour and try again so a later
+        // meal window can still be reached instead of ending the day early.
+        if (!progressed && limit - cursor >= 90) {
+          cursor += 30;
+          progressed = true;
         }
       }
     };
 
     // Pack: before each fixed event, fill the gap with flexible stops, then
-    // anchor the event at its real time. After the last event, fill to the end
-    // of the window so it never leaves a big empty hole.
+    // anchor the event at its real time (clipped to the window, so an event
+    // already in progress at window start is joined late, not dropped). After
+    // the last event, fill to the end of the window.
     for (const ev of fixed) {
-      const evS = toMinutes(ev.startTime as string);
+      const evS = Math.max(toMinutes(ev.startTime as string), winStart);
       const evE = Math.min(toMinutes(ev.endTime as string), winEnd);
+      if (evE - evS < 20) continue; // too little of it left to be worth going
       if (evS < cursor) continue; // no room before this event; skip it
       fillUntil(evS, true);
       if (evS < cursor) continue; // a filler overran; skip rather than overlap
@@ -312,7 +344,7 @@ export class HeuristicPlanner implements Planner {
       partySize: req.partySize,
       generatedBy: 'heuristic',
       modifier: req.modifier,
-      items,
+      items: rebuildConnectors(items),
       createdAt: new Date().toISOString(),
     };
   }

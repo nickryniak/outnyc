@@ -97,12 +97,15 @@ export interface PlanItem {
   lat?: number;
   lng?: number;
   address?: string;
-  /** Deep-link out for "Book"/"Tickets" — the app only Linking-opens this. */
+  /** Deep-link out for "Book"/"Tickets" (the app only Linking-opens this). */
   bookingUrl?: string;
   /** Id of the upstream candidate (event/place) this stop came from, if any. */
   sourceId?: string;
   /** If this stop satisfies a bucket item, link it back. */
   bucketItemId?: string;
+  /** Short venue description from the provider/curated data. */
+  description?: string;
+  /** One-line "why this pick" from the planner, plus walk-connector notes. */
   note?: string;
 }
 
@@ -150,7 +153,21 @@ export interface Candidate {
   lng?: number;
   address?: string;
   bookingUrl?: string;
+  /** Short venue description shown on plan blocks. */
+  description?: string;
   tags: string[];
+}
+
+/**
+ * Per-day overrides for the planner. Any unset field falls back to the profile
+ * defaults. Set from the day panel in the week view.
+ */
+export interface DayPrefs {
+  date: string; // 'YYYY-MM-DD'
+  neighborhoods?: string[];
+  price?: PriceRange;
+  partySize?: number;
+  interests?: string[];
 }
 
 /** Every provider exposes this descriptor. */

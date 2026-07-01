@@ -42,6 +42,13 @@ export const colors = {
   walk: '#9C9082', // faint
   break: '#B4A98F',
 
+  // Calendar blocks.
+  free: '#2E6B58', // deep muted green: available time
+  freeSoft: '#DDE9E2',
+  planned: '#3D4A63', // muted navy: planned blocks
+  plannedPressed: '#33405A',
+  gridLine: '#E7DECB', // hairline calendar rules
+
   // Ink used on top of colored/photo art.
   onArt: '#FBF7EC',
   onArtMuted: '#E8DCC6',
@@ -60,11 +67,12 @@ export const spacing = {
   xxl: 32,
 } as const;
 
+// Restrained, near-flat corners: editorial print, not a playful app.
 export const radius = {
-  sm: 8,
-  md: 12,
-  lg: 18,
-  xl: 24,
+  sm: 4,
+  md: 6,
+  lg: 10,
+  xl: 14,
   pill: 999,
 } as const;
 

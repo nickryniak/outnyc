@@ -175,6 +175,50 @@ export function normalizeTime(input: string): string | null {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
+// ---- Calendar block drag math ------------------------------------------------
+
+export interface BlockDragResult {
+  start: number; // minutes since midnight
+  end: number;
+}
+
+/**
+ * Pure math for dragging a calendar block: apply a minute delta to the top
+ * edge, bottom edge, or the whole block; snap to the hour; clamp to the
+ * visible day; keep at least `minLen` minutes.
+ */
+export function applyBlockDrag(
+  edge: 'top' | 'bottom' | 'move',
+  startMin: number,
+  endMin: number,
+  deltaMin: number,
+  dayStartMin: number,
+  dayEndMin: number,
+  minLen = 60,
+): BlockDragResult {
+  const snap = (m: number) => Math.round(m / 60) * 60;
+  const clamp = (m: number) => Math.max(dayStartMin, Math.min(dayEndMin, m));
+  let ns = startMin;
+  let ne = endMin;
+  if (edge === 'top') {
+    ns = snap(clamp(startMin + deltaMin));
+  } else if (edge === 'bottom') {
+    ne = snap(clamp(endMin + deltaMin));
+  } else {
+    ns = snap(clamp(startMin + deltaMin));
+    ne = ns + (endMin - startMin);
+    if (ne > dayEndMin) {
+      ne = dayEndMin;
+      ns = ne - (endMin - startMin);
+    }
+  }
+  if (ne - ns < minLen) {
+    if (edge === 'top') ns = ne - minLen;
+    else ne = ns + minLen;
+  }
+  return { start: clamp(ns), end: clamp(ne) };
+}
+
 /** True if two windows share any minute. */
 export function windowsOverlap(a: TimeWindow, b: TimeWindow): boolean {
   return toMinutes(a.start) < toMinutes(b.end) && toMinutes(b.start) < toMinutes(a.end);

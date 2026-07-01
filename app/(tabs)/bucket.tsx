@@ -6,10 +6,11 @@
 // =============================================================================
 
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Body, Button, Caption, Eyebrow, Heading, LoadingView } from '../../components/ui';
+import { confirmDestructive } from '../../lib/confirm';
 import { useStore } from '../../lib/store';
 import { colors, font, radius, spacing } from '../../lib/theme';
 import type { BucketItem } from '../../lib/types';
@@ -29,7 +30,7 @@ function parseList(text: string): string[] {
 /** Split "Title - note" into a title + optional note. */
 function splitTitleNote(line: string): { title: string; note?: string } {
   const m = line.split(/\s+[-–—]\s+/);
-  if (m.length > 1) return { title: m[0].trim(), note: m.slice(1).join(' — ').trim() };
+  if (m.length > 1) return { title: m[0].trim(), note: m.slice(1).join('. ').trim() };
   return { title: line };
 }
 
@@ -86,10 +87,12 @@ export default function BucketScreen() {
   }
 
   function confirmRemove(item: BucketItem) {
-    Alert.alert(`Remove “${item.title}”?`, 'This deletes it from your bucket list.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => void removeBucketItem(item.id) },
-    ]);
+    confirmDestructive(
+      `Remove “${item.title}”?`,
+      'This deletes it from your bucket list.',
+      'Remove',
+      () => void removeBucketItem(item.id),
+    );
   }
 
   return (
@@ -123,7 +126,7 @@ export default function BucketScreen() {
 
       <Heading>Open</Heading>
       {open.length === 0 ? (
-        <Caption muted>Nothing open yet — paste a few ideas above.</Caption>
+        <Caption muted>Nothing open yet. Paste a few ideas above.</Caption>
       ) : (
         open.map((item) => (
           <BucketRow
