@@ -66,6 +66,10 @@ interface StoreState {
   setAvailability(date: string, windows: TimeWindow[]): Promise<void>;
 
   addBucketItem(input: { title: string; note?: string; neighborhood?: string }): Promise<void>;
+  /** Bulk-add many items at once (from a pasted list). */
+  addBucketItems(
+    inputs: { title: string; note?: string; neighborhood?: string; tags?: string[] }[],
+  ): Promise<number>;
   toggleBucketDone(id: string): Promise<void>;
   removeBucketItem(id: string): Promise<void>;
 
@@ -236,6 +240,25 @@ export const useStore = create<StoreState>((set, get) => ({
     const next = [...items, item];
     await repository.saveBucketList(next);
     set({ bucketList: next });
+  },
+
+  async addBucketItems(inputs) {
+    const items = get().bucketList;
+    let order = items.reduce((m, b) => Math.max(m, b.sortOrder), -1);
+    const additions: BucketItem[] = inputs
+      .map((inp) => ({
+        title: inp.title.trim(),
+        note: inp.note?.trim() || undefined,
+        neighborhood: inp.neighborhood?.trim() || undefined,
+        tags: inp.tags ?? [],
+      }))
+      .filter((x) => x.title.length > 0)
+      .map((x) => ({ id: genId('bucket'), ...x, done: false, sortOrder: (order += 1) }));
+    if (additions.length === 0) return 0;
+    const next = [...items, ...additions];
+    set({ bucketList: next });
+    await repository.saveBucketList(next);
+    return additions.length;
   },
 
   async toggleBucketDone(id) {

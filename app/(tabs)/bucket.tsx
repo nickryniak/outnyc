@@ -1,41 +1,89 @@
 // =============================================================================
 // OutNYC — bucket list (app/(tabs)/bucket.tsx)
 // =============================================================================
-// Manage aspirational items. OPEN items are woven into plans by the planner.
+// Aspirational items the planner weaves into your week. Paste a whole list
+// (numbered or one-per-line) to bulk-import; each OPEN item becomes a candidate.
 // =============================================================================
 
 import { useMemo, useState } from 'react';
-import {
-  Alert,
-  FlatList,
-  Pressable,
-  StyleSheet,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import {
-  Body,
-  Button,
-  Caption,
-  EmptyView,
-  Heading,
-  LoadingView,
-} from '../../components/ui';
+import { Body, Button, Caption, Eyebrow, Heading, LoadingView } from '../../components/ui';
 import { useStore } from '../../lib/store';
-import { colors, radius, spacing } from '../../lib/theme';
+import { colors, font, radius, spacing } from '../../lib/theme';
 import type { BucketItem } from '../../lib/types';
+
+// ---- Paste parsing ----------------------------------------------------------
+
+/** Split pasted text into item strings — handles "1." / "1)" / bullets / lines. */
+function parseList(text: string): string[] {
+  const t = text.trim();
+  if (!t) return [];
+  const parts = /(^|\s)\d+[.)]\s+/.test(t)
+    ? t.split(/\s*\d+[.)]\s+/)
+    : t.split(/\r?\n|•|(?:^|\s)[-*]\s+/);
+  return parts.map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
+}
+
+/** Split "Title - note" into a title + optional note. */
+function splitTitleNote(line: string): { title: string; note?: string } {
+  const m = line.split(/\s+[-–—]\s+/);
+  if (m.length > 1) return { title: m[0].trim(), note: m.slice(1).join(' — ').trim() };
+  return { title: line };
+}
+
+const TAG_RULES: [RegExp, string[]][] = [
+  [/park|garden|beach|island|greenway|hudson|rockaway|red hook|governors|roosevelt|kayak|bike|walk|outdoor|golf/i, ['outdoors']],
+  [/museum|\bmet\b|broadway|shakespeare|gallery|\bart\b/i, ['art']],
+  [/jazz|live music|concert|vanguard/i, ['live music']],
+  [/movie|film|snl|late night|fallon|show/i, ['film']],
+  [/rooftop|\bbar\b|party|le bain|club|drinks|cocktail/i, ['bar']],
+  [/pizza|ramen|food|eat|dinner|brunch|slice/i, ['food']],
+  [/comedy|stand-?up/i, ['comedy']],
+];
+
+function inferTags(text: string): string[] {
+  const tags = new Set<string>();
+  for (const [re, ts] of TAG_RULES) if (re.test(text)) ts.forEach((t) => tags.add(t));
+  return [...tags];
+}
+
+function toInputs(text: string) {
+  return parseList(text).map((line) => {
+    const { title, note } = splitTitleNote(line);
+    return { title, note, tags: inferTags(line) };
+  });
+}
+
+// ---- Screen -----------------------------------------------------------------
 
 export default function BucketScreen() {
   const insets = useSafeAreaInsets();
   const loadStatus = useStore((s) => s.loadStatus);
   const bucketList = useStore((s) => s.bucketList);
-  const addBucketItem = useStore((s) => s.addBucketItem);
+  const addBucketItems = useStore((s) => s.addBucketItems);
   const toggleBucketDone = useStore((s) => s.toggleBucketDone);
   const removeBucketItem = useStore((s) => s.removeBucketItem);
 
   const [draft, setDraft] = useState('');
+  const parsedCount = useMemo(() => parseList(draft).length, [draft]);
+
+  const { open, done } = useMemo(() => {
+    const sorted = [...bucketList].sort((a, b) => a.sortOrder - b.sortOrder);
+    return { open: sorted.filter((b) => !b.done), done: sorted.filter((b) => b.done) };
+  }, [bucketList]);
+
+  if (loadStatus === 'loading' || loadStatus === 'idle') {
+    return <LoadingView label="Loading your list…" />;
+  }
+
+  async function onAdd() {
+    const inputs = toInputs(draft);
+    if (inputs.length === 0) return;
+    await addBucketItems(inputs);
+    setDraft('');
+  }
 
   function confirmRemove(item: BucketItem) {
     Alert.alert(`Remove “${item.title}”?`, 'This deletes it from your bucket list.', [
@@ -44,80 +92,63 @@ export default function BucketScreen() {
     ]);
   }
 
-  const { open, done } = useMemo(() => {
-    const sorted = [...bucketList].sort((a, b) => a.sortOrder - b.sortOrder);
-    return {
-      open: sorted.filter((b) => !b.done),
-      done: sorted.filter((b) => b.done),
-    };
-  }, [bucketList]);
-
-  if (loadStatus === 'loading' || loadStatus === 'idle') {
-    return <LoadingView label="Loading your list…" />;
-  }
-
-  async function onAdd() {
-    const title = draft.trim();
-    if (!title) return;
-    await addBucketItem({ title });
-    setDraft('');
-  }
-
   return (
-    <View style={styles.container}>
-      <View style={styles.composer}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xxl }]}
+      keyboardShouldPersistTaps="handled"
+    >
+      <Eyebrow>Your list</Eyebrow>
+      <Caption muted>
+        Paste a whole list (numbered or one per line). The planner weaves open
+        items into your week when they fit.
+      </Caption>
+
+      <View style={styles.importer}>
         <TextInput
           value={draft}
           onChangeText={setDraft}
-          placeholder="Add something you want to do…"
+          placeholder={'e.g.\n1. Shakespeare in the Park\n2. Jazz club\n3. Rooftop party'}
           placeholderTextColor={colors.textFaint}
           style={styles.input}
-          returnKeyType="done"
-          onSubmitEditing={onAdd}
+          multiline
+          textAlignVertical="top"
         />
-        <Button label="Add" onPress={onAdd} disabled={draft.trim().length === 0} />
+        <Button
+          label={parsedCount > 1 ? `Add ${parsedCount} items` : 'Add item'}
+          onPress={onAdd}
+          disabled={parsedCount === 0}
+        />
       </View>
 
-      <FlatList
-        style={styles.list}
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: insets.bottom + spacing.xxl },
-        ]}
-        data={open}
-        keyExtractor={(item) => item.id}
-        keyboardShouldPersistTaps="handled"
-        ListHeaderComponent={<Heading>Open</Heading>}
-        ListEmptyComponent={
-          <EmptyView
-            title="Nothing open yet"
-            message="Add a few things you want to do — the planner weaves these into your days when they fit."
-          />
-        }
-        renderItem={({ item }) => (
+      <Heading>Open</Heading>
+      {open.length === 0 ? (
+        <Caption muted>Nothing open yet — paste a few ideas above.</Caption>
+      ) : (
+        open.map((item) => (
           <BucketRow
+            key={item.id}
             item={item}
             onToggle={() => void toggleBucketDone(item.id)}
             onRemove={() => confirmRemove(item)}
           />
-        )}
-        ListFooterComponent={
-          done.length > 0 ? (
-            <View style={styles.doneSection}>
-              <Heading>Done</Heading>
-              {done.map((item) => (
-                <BucketRow
-                  key={item.id}
-                  item={item}
-                  onToggle={() => void toggleBucketDone(item.id)}
-                  onRemove={() => confirmRemove(item)}
-                />
-              ))}
-            </View>
-          ) : null
-        }
-      />
-    </View>
+        ))
+      )}
+
+      {done.length > 0 ? (
+        <View style={styles.doneSection}>
+          <Heading>Done</Heading>
+          {done.map((item) => (
+            <BucketRow
+              key={item.id}
+              item={item}
+              onToggle={() => void toggleBucketDone(item.id)}
+              onRemove={() => confirmRemove(item)}
+            />
+          ))}
+        </View>
+      ) : null}
+    </ScrollView>
   );
 }
 
@@ -135,22 +166,25 @@ function BucketRow({
       <Pressable
         accessibilityRole="checkbox"
         accessibilityState={{ checked: item.done }}
+        hitSlop={8}
         onPress={onToggle}
         style={[styles.check, item.done && styles.checkDone]}
       >
-        <Body>{item.done ? '✓' : ''}</Body>
+        {item.done ? <Text style={styles.checkMark}>✓</Text> : null}
       </Pressable>
       <View style={styles.rowContent}>
-        <Body>{item.title}</Body>
-        <View style={styles.metaRow}>
-          {item.neighborhood ? <Caption muted>{item.neighborhood}</Caption> : null}
-          {item.priceTier ? (
-            <Caption muted>· {'$'.repeat(item.priceTier)}</Caption>
-          ) : null}
-          {item.tags.length > 0 ? (
-            <Caption muted>· {item.tags.join(', ')}</Caption>
-          ) : null}
-        </View>
+        <Text style={[styles.rowTitle, item.done && styles.rowTitleDone]}>{item.title}</Text>
+        {item.neighborhood || item.priceTier || item.tags.length > 0 ? (
+          <Text style={styles.rowMeta}>
+            {[
+              item.neighborhood,
+              item.priceTier ? '$'.repeat(item.priceTier) : null,
+              item.tags.length ? item.tags.join(', ') : null,
+            ]
+              .filter(Boolean)
+              .join('  ·  ')}
+          </Text>
+        ) : null}
         {item.note ? <Caption muted>{item.note}</Caption> : null}
       </View>
       <Pressable
@@ -160,40 +194,27 @@ function BucketRow({
         onPress={onRemove}
         style={styles.remove}
       >
-        <Caption muted>✕</Caption>
+        <Text style={styles.removeGlyph}>✕</Text>
       </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  composer: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    padding: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
+  container: { flex: 1, backgroundColor: colors.bg },
+  content: { padding: spacing.lg, gap: spacing.md },
+  importer: { gap: spacing.sm },
   input: {
-    flex: 1,
-    minHeight: 48,
+    minHeight: 96,
     paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     color: colors.text,
-  },
-  list: {
-    flex: 1,
-  },
-  content: {
-    padding: spacing.lg,
-    gap: spacing.md,
+    fontSize: font.size.md,
+    lineHeight: 22,
   },
   row: {
     flexDirection: 'row',
@@ -205,34 +226,27 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
   },
-  rowContent: {
-    flex: 1,
-    gap: spacing.xs,
+  rowContent: { flex: 1, gap: 2 },
+  rowTitle: {
+    color: colors.text,
+    fontFamily: font.family.heading,
+    fontSize: font.size.md + 1,
   },
-  metaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-  },
+  rowTitleDone: { color: colors.textMuted, textDecorationLine: 'line-through' },
+  rowMeta: { color: colors.textMuted, fontSize: font.size.sm },
   check: {
-    width: 28,
-    height: 28,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
+    width: 26,
+    height: 26,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    borderColor: colors.borderStrong,
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 2,
   },
-  checkDone: {
-    backgroundColor: colors.secondarySoft,
-    borderColor: colors.success,
-  },
-  remove: {
-    padding: spacing.xs,
-  },
-  doneSection: {
-    gap: spacing.md,
-    marginTop: spacing.lg,
-    opacity: 0.7,
-  },
+  checkDone: { backgroundColor: colors.secondary, borderColor: colors.secondary },
+  checkMark: { color: colors.onArt, fontSize: 14, fontWeight: font.weight.bold },
+  remove: { padding: spacing.xs },
+  removeGlyph: { color: colors.textFaint, fontSize: font.size.md },
+  doneSection: { gap: spacing.md, marginTop: spacing.lg, opacity: 0.75 },
 });
