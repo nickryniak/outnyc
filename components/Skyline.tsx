@@ -7,7 +7,7 @@
 // gradient sky. Pure react-native-svg: crisp at any size, themeable, no assets.
 // =============================================================================
 
-import { View, ViewStyle } from 'react-native';
+import { Platform, View, ViewStyle } from 'react-native';
 import Svg, {
   Circle,
   Defs,
@@ -75,6 +75,10 @@ export function Skyline({
 
   return (
     <View
+      // Purely decorative hero art — keep it out of the screen-reader order.
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      {...(Platform.OS === 'web' ? { 'aria-hidden': true } : null)}
       style={[{ height, width: '100%', overflow: 'hidden', borderRadius: rounded }, style]}
     >
       <Svg width="100%" height="100%" viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="xMidYMax slice">

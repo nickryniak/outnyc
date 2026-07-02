@@ -8,11 +8,12 @@
 // v2 planning rules implemented here:
 //   - Per-day preferences (neighborhoods/price/party/interests) override the
 //     profile defaults for that day only.
-//   - Never-repeat: every candidate a day has already been shown lands in
-//     seenByDate; reshuffles and swaps exclude those ids (the planner widens
-//     its filters before ever repeating).
-//   - One reshuffle verb at each scope: week (planWeek), day (reshuffleDay),
-//     single block (swapPlanItem / alternativesForItem).
+//   - Never-repeat: every candidate a day has been shown lands in seenByDate;
+//     planning, reshuffles, and swaps exclude everything seen ANYWHERE in the
+//     same Mon-Sun week, absolutely — when the catalog runs dry the app is
+//     honest (sparser days, clear messages) instead of quietly repeating.
+//   - Reshuffle verbs: day (reshuffleDay) and single block (swapPlanItem /
+//     alternativesForItem, with optional intent).
 // =============================================================================
 
 import { create } from 'zustand';
@@ -28,13 +29,15 @@ import { defaultPlanner } from './planner';
 import {
   allowedStart,
   candidateDuration,
+  filterToNeighborhoods,
   hash,
   rebuildConnectors,
   sameCategory,
+  venueKey,
 } from './planner/slotUtils';
 import { eventsProvider, placesProvider } from './providers';
 import { repository } from './storage';
-import { fromMinutes, isValidWindow, todayNY, toMinutes } from './time';
+import { fromMinutes, isValidWindow, mondayOf, todayNY, toMinutes, weekDates } from './time';
 import type {
   Availability,
   BucketItem,
@@ -62,6 +65,80 @@ export interface LockResult {
   scheduled: number;
   reason: 'ok' | 'permission-denied' | 'none-upcoming';
 }
+
+/**
+ * How a per-stop swap should choose its replacement:
+ *   cheaper/pricier   — best-ranked candidate below/above this stop's price,
+ *                       within the SAME category as today (a dinner stays a
+ *                       dinner, just pricier)
+ *   surprise          — uniformly random among everything that fits the slot,
+ *                       same category as today
+ *   indoor            — excludes candidates tagged 'outdoors', same category
+ *   everything else   — an explicit CATEGORY override: "I just want a coffee
+ *                       shop" / "a park" should work no matter what's
+ *                       currently scheduled here, so these search the WHOLE
+ *                       slot (any kind), not just this stop's category. See
+ *                       CROSS_CATEGORY_INTENTS below.
+ * No intent = the top-ranked candidate, same category (the old default).
+ */
+export type SwapIntent =
+  | 'cheaper'
+  | 'pricier'
+  | 'surprise'
+  | 'indoor'
+  | 'italian'
+  | 'pizza'
+  | 'japanese'
+  | 'french'
+  | 'southern'
+  | 'greek'
+  | 'deli'
+  | 'mediterranean'
+  | 'peruvian'
+  | 'bakery'
+  | 'coffee'
+  | 'rooftop'
+  | 'live-music'
+  | 'comedy'
+  | 'art'
+  | 'outdoors'
+  | 'film';
+
+/** Tag-match intents: pick the top-ranked option carrying this exact tag. */
+const TAG_INTENTS: Partial<Record<SwapIntent, string>> = {
+  coffee: 'coffee',
+  rooftop: 'rooftop',
+  'live-music': 'live music',
+  comedy: 'comedy',
+  art: 'art',
+  outdoors: 'outdoors',
+  film: 'film',
+};
+
+/** Cuisine-match intents: pick the top-ranked option with this exact cuisine. */
+const CUISINE_INTENTS: Partial<Record<SwapIntent, string>> = {
+  italian: 'Italian',
+  pizza: 'Pizza',
+  japanese: 'Japanese',
+  french: 'French',
+  southern: 'Southern',
+  greek: 'Greek',
+  deli: 'Deli',
+  mediterranean: 'Mediterranean',
+  peruvian: 'Peruvian',
+  bakery: 'Bakery',
+};
+
+/**
+ * Intents that name an explicit category (a cuisine or a tag) rather than a
+ * relative adjustment. These search every kind of candidate for the slot —
+ * "Coffee" or "Outdoors" should surface a coffee shop / a park even when the
+ * stop you're swapping is currently a dinner or a show.
+ */
+export const CROSS_CATEGORY_INTENTS = new Set<SwapIntent>([
+  ...(Object.keys(TAG_INTENTS) as SwapIntent[]),
+  ...(Object.keys(CUISINE_INTENTS) as SwapIntent[]),
+]);
 
 /** The preferences the planner actually uses for a date (day prefs + defaults). */
 export interface ResolvedPrefs {
@@ -99,6 +176,10 @@ interface StoreState {
   setAvailability(date: string, windows: TimeWindow[]): Promise<void>;
   setDayPrefs(date: string, prefs: Partial<Omit<DayPrefs, 'date'>>): Promise<void>;
   clearDayPrefs(date: string): Promise<void>;
+  /** Clear everything chosen for ONE day: its free time, its plans, and any day-only prefs. */
+  clearDay(date: string): Promise<void>;
+  /** Clear every day in the given range at once (the visible week). */
+  clearWeek(dates: string[]): Promise<void>;
 
   addBucketItem(input: { title: string; note?: string; neighborhood?: string }): Promise<void>;
   /** Bulk-add many items at once (from a pasted list). */
@@ -110,19 +191,19 @@ interface StoreState {
 
   generatePlan(date: string, window: TimeWindow, modifier?: PlanModifier): Promise<void>;
   reshufflePlan(date: string, window: TimeWindow, modifier?: PlanModifier): Promise<void>;
-  /** The single week-scope reshuffle: (re)plans every window on the dates. */
-  planWeek(dates: string[]): Promise<void>;
   /** The single day-scope reshuffle: (re)plans every window on one date. */
   reshuffleDay(date: string): Promise<void>;
   /**
    * Swap one block for a fresh candidate in the same category + time slot.
-   * Pass `replacementId` to swap to a specific candidate (from alternatives).
+   * Pass `replacementId` to swap to a specific candidate (from alternatives),
+   * or an `intent` to steer the pick (cheaper/pricier/surprise/indoor).
    */
   swapPlanItem(
     date: string,
     window: TimeWindow,
     itemId: string,
     replacementId?: string,
+    intent?: SwapIntent,
   ): Promise<boolean>;
   /** Everything that could replace a block right now (same category + slot). */
   alternativesForItem(date: string, window: TimeWindow, itemId: string): Promise<Candidate[]>;
@@ -181,11 +262,22 @@ export function resolvePrefs(
   };
 }
 
-/** Candidate ids used by a plan's stops (the never-repeat memory entries). */
-function planCandidateIds(plan: Plan): string[] {
-  return plan.items
-    .filter((i) => i.kind !== 'walk' && i.kind !== 'break')
-    .map((i) => i.sourceId ?? i.bucketItemId ?? i.id);
+/**
+ * Never-repeat memory entries for a plan's stops: both the raw candidate id
+ * AND a venue-identity key derived from the title. The venue key is what
+ * catches a bucket wish ("Jazz set at the Village Vanguard") and a curated/
+ * live listing for the SAME real place ("Live Jazz at the Village Vanguard")
+ * as one venue, even though they carry different ids — otherwise both could
+ * get scheduled as if they were two fresh, different picks.
+ */
+function planCandidateKeys(plan: Plan): string[] {
+  const keys: string[] = [];
+  for (const i of plan.items) {
+    if (i.kind === 'walk' || i.kind === 'break') continue;
+    keys.push(i.sourceId ?? i.bucketItemId ?? i.id);
+    keys.push(venueKey(i.title));
+  }
+  return keys;
 }
 
 /**
@@ -242,13 +334,14 @@ async function loadAllInto(set: SetFn): Promise<void> {
   const dayPrefsByDate: Record<string, DayPrefs> = {};
   for (const p of dayPrefsList) dayPrefsByDate[p.date] = p;
 
-  // Never-repeat memory only matters for today and the future; prune the past
-  // so it cannot grow without bound.
+  // Never-repeat memory is week-scoped (no venue repeats within a Mon-Sun
+  // week), so keep the CURRENT week's history — including days already past —
+  // and prune anything from previous weeks so it cannot grow without bound.
   const seenByDate = await repository.getSeenMap();
-  const today = todayNY();
+  const weekStart = mondayOf(todayNY());
   let seenPruned = false;
   for (const date of Object.keys(seenByDate)) {
-    if (date < today) {
+    if (date < weekStart) {
       delete seenByDate[date];
       seenPruned = true;
     }
@@ -389,6 +482,26 @@ export const useStore = create<StoreState>((set, get) => ({
     await repository.saveDayPrefs(cleared);
   },
 
+  async clearDay(date) {
+    // Route through the per-date plan queue so a clear can't interleave with an
+    // in-flight runPlan for the same day — otherwise that plan could commit
+    // AFTER the clear and resurrect the day. Remove free time (setAvailability
+    // [] also prunes the day's plans and cancels their reminders), reset any
+    // day-only prefs, and wipe the day's never-repeat memory.
+    return enqueuePlan(date, async () => {
+      await get().setAvailability(date, []);
+      await get().clearDayPrefs(date);
+      if (get().seenByDate[date]) {
+        set((s) => ({ seenByDate: omit(s.seenByDate, date) }));
+        await repository.saveSeenMap(get().seenByDate);
+      }
+    });
+  },
+
+  async clearWeek(dates) {
+    for (const d of dates) await get().clearDay(d);
+  },
+
   // All bucket mutations update state FIRST via a functional updater (so
   // overlapping calls compose instead of clobbering), then persist the
   // freshest list.
@@ -458,12 +571,6 @@ export const useStore = create<StoreState>((set, get) => ({
     });
   },
 
-  async planWeek(dates) {
-    for (const date of dates) {
-      await get().reshuffleDay(date);
-    }
-  },
-
   async reshuffleDay(date) {
     return enqueuePlan(date, async () => {
       // Re-read the windows on every pass so a block removed mid-run is
@@ -480,16 +587,14 @@ export const useStore = create<StoreState>((set, get) => ({
     });
   },
 
-  async swapPlanItem(date, window, itemId, replacementId) {
+  async swapPlanItem(date, window, itemId, replacementId, intent) {
     const key = planKey(date, window);
     const plan = get().plansByKey[key];
     const item = plan?.items.find((i) => i.id === itemId);
     if (!plan || !item) return false;
 
-    const options = await slotCandidates(get, date, window, item);
-    const pick = replacementId
-      ? options.find((c) => c.id === replacementId)
-      : options[0];
+    const options = await slotCandidates(get, date, window, item, intent);
+    const pick = pickByIntent(options, item, replacementId, intent);
     if (!pick) return false;
 
     // The provider fetch above awaited: re-validate that the plan was not
@@ -506,8 +611,16 @@ export const useStore = create<StoreState>((set, get) => ({
     let newStart = slotStart;
     let newEnd = slotStart + Math.min(candidateDuration(pick), slotEnd - slotStart);
     if (pick.startTime && pick.endTime) {
-      newStart = Math.max(slotStart, toMinutes(pick.startTime));
-      newEnd = Math.min(slotEnd, toMinutes(pick.endTime));
+      const clampedStart = Math.max(slotStart, toMinutes(pick.startTime));
+      const clampedEnd = Math.min(slotEnd, toMinutes(pick.endTime));
+      // A candidate only had to cover slotStart+30 to qualify, so on a short
+      // (sub-30-min) slot its real start can land past slotEnd and invert the
+      // window. Only adopt the fixed times when they yield a positive duration;
+      // otherwise keep the flexible placement above (always positive).
+      if (clampedEnd > clampedStart) {
+        newStart = clampedStart;
+        newEnd = clampedEnd;
+      }
     }
 
     const replacement: PlanItem = {
@@ -523,17 +636,28 @@ export const useStore = create<StoreState>((set, get) => ({
       lng: pick.lng,
       address: pick.address,
       bookingUrl: pick.bookingUrl,
+      rating: pick.rating,
+      ratingCount: pick.ratingCount,
       description: pick.description,
       note: 'Swapped in by you.',
+      tags: pick.tags,
+      cuisine: pick.cuisine,
       sourceId: pick.kind === 'bucket' ? undefined : pick.id,
       bucketItemId: pick.kind === 'bucket' ? pick.id : undefined,
     };
 
     // Retire BOTH sides into the day's never-repeat memory: the outgoing stop
     // (so it never comes back) and the incoming pick (so a sibling window
-    // cannot serve the same venue again today).
+    // cannot serve the same venue again today). Venue keys alongside the raw
+    // ids so a same-place-different-id echo (bucket wish vs. curated listing)
+    // is caught too.
     const outgoingId = item.sourceId ?? item.bucketItemId ?? item.id;
-    await addSeen(set, get, date, [outgoingId, pick.id]);
+    await addSeen(set, get, date, [
+      outgoingId,
+      venueKey(item.title),
+      pick.id,
+      venueKey(pick.name),
+    ]);
 
     const stops = fresh.items
       .filter((i) => i.kind !== 'walk' && i.kind !== 'break')
@@ -561,7 +685,9 @@ export const useStore = create<StoreState>((set, get) => ({
     const plan = get().plansByKey[key];
     const item = plan?.items.find((i) => i.id === itemId);
     if (!plan || !item) return [];
-    return slotCandidates(get, date, window, item);
+    // Display cap lives HERE (the sheet shows a shortlist); the underlying
+    // pool stays uncapped so swap intents can search all of it.
+    return (await slotCandidates(get, date, window, item)).slice(0, 12);
   },
 
   async lockInPlan(planId): Promise<LockResult> {
@@ -629,20 +755,84 @@ async function retirePlanCandidates(
   plan: Plan | undefined,
 ): Promise<void> {
   if (!plan) return;
-  await addSeen(set, get, date, planCandidateIds(plan));
+  await addSeen(set, get, date, planCandidateKeys(plan));
 }
 
 /**
- * Candidates that could fill an existing block's slot: same category, allowed
- * at that hour, fits the slot, not already used today, never-repeat honored.
- * Price-filtered first; if that starves the list, the price filter is dropped
- * rather than returning nothing.
+ * Every candidate id/venue-key already used ANYWHERE in `date`'s Mon-Sun week:
+ * the week's never-repeat memory plus everything scheduled in the week's
+ * current plans. This is the exclusion set for planning, reshuffles, and
+ * swaps — a venue suggested on Monday (by any candidate id) cannot come back
+ * on Thursday under a different id for the same real place.
+ */
+function weekSeenIds(s: StoreState, date: string): Set<string> {
+  const days = weekDates(mondayOf(date));
+  const out = new Set<string>();
+  for (const d of days) {
+    for (const id of s.seenByDate[d] ?? []) out.add(id);
+  }
+  for (const p of Object.values(s.plansByKey)) {
+    if (days.includes(p.date)) {
+      for (const key of planCandidateKeys(p)) out.add(key);
+    }
+  }
+  return out;
+}
+
+/** Choose a swap replacement from the ranked options, honoring the intent. */
+function pickByIntent(
+  options: Candidate[],
+  item: PlanItem,
+  replacementId?: string,
+  intent?: SwapIntent,
+): Candidate | undefined {
+  if (replacementId) return options.find((c) => c.id === replacementId);
+  if (options.length === 0) return undefined;
+  if (intent && intent in CUISINE_INTENTS) {
+    const want = (CUISINE_INTENTS[intent] as string).toLowerCase();
+    return options.find((c) => (c.cuisine ?? '').toLowerCase() === want);
+  }
+  if (intent && intent in TAG_INTENTS) {
+    const want = TAG_INTENTS[intent] as string;
+    return options.find((c) => c.tags.some((t) => t.toLowerCase() === want));
+  }
+  switch (intent) {
+    case 'surprise':
+      return options[Math.floor(Math.random() * options.length)];
+    case 'indoor':
+      return options.find((c) => !c.tags.some((t) => t.toLowerCase() === 'outdoors'));
+    case 'cheaper':
+    case 'pricier': {
+      const cur = item.priceTier ?? 2;
+      const eligible = options.filter(
+        (c) =>
+          c.priceTier != null && (intent === 'cheaper' ? c.priceTier < cur : c.priceTier > cur),
+      );
+      // Closest price tier first; rank order breaks ties (sort is stable).
+      eligible.sort(
+        (a, b) => Math.abs((a.priceTier ?? cur) - cur) - Math.abs((b.priceTier ?? cur) - cur),
+      );
+      return eligible[0];
+    }
+    default:
+      return options[0];
+  }
+}
+
+/**
+ * Candidates that could fill an existing block's slot: same category (unless
+ * an explicit category-override intent is given — see CROSS_CATEGORY_INTENTS),
+ * allowed at that hour, fits the slot, not already used anywhere this week
+ * (the never-repeat rule is absolute — an empty list is honest, never padded
+ * with repeats). Price-filtered first; if that starves the list, the price
+ * filter is dropped rather than returning nothing.
  */
 async function slotCandidates(
   get: () => StoreState,
   date: string,
   window: TimeWindow,
   item: PlanItem,
+  intent?: SwapIntent,
 ): Promise<Candidate[]> {
   const profile = get().profile;
   if (!profile) return [];
@@ -671,14 +861,31 @@ async function slotCandidates(
 
   const plan = get().plansByKey[planKey(date, window)];
   const inPlan = new Set(
-    (plan?.items ?? []).map((i) => i.sourceId ?? i.bucketItemId ?? i.id),
+    (plan?.items ?? [])
+      .filter((i) => i.kind !== 'walk' && i.kind !== 'break')
+      .flatMap((i) => [i.sourceId ?? i.bucketItemId ?? i.id, venueKey(i.title)]),
   );
-  const seen = new Set(get().seenByDate[date] ?? []);
+  // The absolute no-repeat rule: everything already used anywhere this week is
+  // out. When this empties the list the UI says so plainly (and suggests
+  // widening neighborhoods/price) — it never quietly re-serves a repeat.
+  const seen = weekSeenIds(get(), date);
+
+  // An explicit category ask ("Coffee", "Outdoors", "Italian"...) overrides
+  // this stop's current kind entirely — you should be able to turn a dinner
+  // into a park visit, or an activity into a coffee stop, by naming what you
+  // actually want. Cheaper/pricier/surprise/indoor stay within today's kind
+  // (a "cheaper dinner" should still be dinner).
+  const crossCategory = intent != null && CROSS_CATEGORY_INTENTS.has(intent);
 
   const pool = [...eventsRes.candidates, ...placesRes.candidates, ...buckets].filter((c) => {
     if (inPlan.has(c.id) || seen.has(c.id)) return false;
-    if (!sameCategory(c.kind, item.kind)) return false;
-    if (!allowedStart(c, slotStart)) return false;
+    if (inPlan.has(venueKey(c.name)) || seen.has(venueKey(c.name))) return false;
+    if (!crossCategory && !sameCategory(c.kind, item.kind)) return false;
+    // Same deliberate-override reasoning as the category bypass above: tapping
+    // "Coffee" on a dinner stop is the user choosing that venue type AT that
+    // time on purpose, so the normal meal/drink-hour rhythm (which exists to
+    // keep the ORIGINAL schedule sensible) shouldn't silently block it too.
+    if (!crossCategory && !allowedStart(c, slotStart)) return false;
     // Fixed-time candidates must actually cover this slot.
     if (c.startTime && c.endTime) {
       if (toMinutes(c.startTime) > slotStart + 30) return false;
@@ -690,10 +897,26 @@ async function slotCandidates(
     return true;
   });
 
-  const priced = pool.filter(
+  // Keep "Other options" STRICTLY in the day's neighborhoods (location-agnostic
+  // picks with no set area always qualify). This is a hard filter with NO
+  // full-pool fallback: an empty result is intentional and honest ("nothing
+  // local fits this slot") rather than leaking a venue across town. Only the
+  // PRICE filter below widens (priced -> geoPool); neighborhood never does.
+  const geoPool = filterToNeighborhoods(pool, prefs.neighborhoods);
+
+  const priced = geoPool.filter(
     (c) => c.priceTier == null || (c.priceTier >= prefs.price.min && c.priceTier <= prefs.price.max),
   );
-  const usable = priced.length > 0 ? priced : pool;
+  // An explicit Cheaper/Pricier tap is a deliberate step OUTSIDE the day's
+  // price band (a stop already at the band edge would otherwise have nothing
+  // to move to); price is the one filter allowed to widen. Geo strictness and
+  // the week's no-repeat rule always hold.
+  const usable =
+    intent === 'cheaper' || intent === 'pricier'
+      ? geoPool
+      : priced.length > 0
+        ? priced
+        : geoPool;
 
   const nbset = new Set(prefs.neighborhoods.map((n) => n.toLowerCase()));
   const seenCount = (get().seenByDate[date] ?? []).length;
@@ -708,8 +931,10 @@ async function slotCandidates(
       return { c, score };
     })
     .sort((a, b) => b.score - a.score || hash(a.c.id) - hash(b.c.id))
-    .map((s) => s.c)
-    .slice(0, 12);
+    .map((s) => s.c);
+  // NOTE: intentionally uncapped — swap intents filter this list (cheaper/
+  // pricier/indoor), so truncating here would falsely report exhaustion.
+  // The display-only "Other options" list caps in alternativesForItem.
 }
 
 /** Shared plan-generation routine for generate + reshuffle. */
@@ -741,11 +966,16 @@ async function runPlan(
       partySize: prefs.partySize,
       interests: prefs.interests,
       bucketList: get().bucketList.filter((b) => !b.done),
+      // Pass the raw pools; the planner strictly filters every pool to the day's
+      // neighborhoods (and never widens that filter), so the plan can't include
+      // a stop in a neighborhood you didn't pick.
       events: eventsRes.candidates,
       places: placesRes.candidates,
       modifier,
       nonce: nonceByKey[key] ?? 0,
-      excludeIds: get().seenByDate[date] ?? [],
+      // Exclude everything used anywhere this Mon-Sun week, not just this date,
+      // so the same venue never shows up on two days of one week.
+      excludeIds: [...weekSeenIds(get(), date)],
       holiday: holidayFor(date),
     });
 
@@ -765,7 +995,7 @@ async function runPlan(
     // Everything just suggested joins the day's never-repeat memory right away,
     // so a sibling window generated in the same pass (or any later reshuffle)
     // cannot serve the same stop twice on one day.
-    await addSeen(set, get, date, planCandidateIds(plan));
+    await addSeen(set, get, date, planCandidateKeys(plan));
 
     // A reshuffle invalidates any previously locked-in notifications for the
     // prior plan at this window; cancel them so we don't leave stale nudges.

@@ -13,8 +13,8 @@
 // Hairline rules, near-flat corners, restrained palette.
 // =============================================================================
 
-import { MapPin } from 'lucide-react-native';
-import { useMemo, useRef, useState } from 'react';
+import { MapPin, X } from 'lucide-react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   GestureResponderEvent,
   Modal,
@@ -26,8 +26,10 @@ import {
   View,
 } from 'react-native';
 
+import { confirmDestructive } from '../lib/confirm';
 import { NEIGHBORHOODS } from '../lib/constants';
 import { holidayFor } from '../lib/holidays';
+import { stopLabel } from '../lib/labels';
 import { resolvePrefs, useStore } from '../lib/store';
 import { colors, font, kindColor, radius, spacing } from '../lib/theme';
 import { applyBlockDrag, monthDayLabel, toMinutes, weekdayLabel } from '../lib/time';
@@ -57,8 +59,28 @@ function pxToHour(relY: number): number {
 }
 
 interface DragState {
-  edge: 'top' | 'bottom';
+  edge: 'top' | 'bottom' | 'move';
   dy: number;
+}
+
+/** Compact display names so the day-header chip reads as a real place. */
+const NB_ABBR: Record<string, string> = {
+  'West Village': 'W Vlg',
+  'East Village': 'E Vlg',
+  'Lower East Side': 'LES',
+  Williamsburg: 'Wburg',
+  Chelsea: 'Chelsea',
+  SoHo: 'SoHo',
+  Greenpoint: 'Grnpt',
+  DUMBO: 'DUMBO',
+  'Financial District': 'FiDi',
+  Harlem: 'Harlem',
+  Astoria: 'Astoria',
+  Bushwick: 'Bushwk',
+};
+
+function nbAbbr(name: string): string {
+  return NB_ABBR[name] ?? name.slice(0, 6);
 }
 
 /** Static green fill drawn BEHIND the plan blocks so leftover free time shows
@@ -68,6 +90,7 @@ function FreeFill({ window: w, onSelect }: { window: TimeWindow; onSelect: () =>
   const height = minToPx(toMinutes(w.end)) - top;
   return (
     <Pressable
+      accessibilityRole="button"
       accessibilityLabel={`Free ${w.start} to ${w.end}`}
       onPress={onSelect}
       style={[styles.freeFill, { top, height }]}
@@ -95,11 +118,15 @@ function FreeBlockEditor({
   const endMin = toMinutes(w.end);
 
   // PanResponders are created once per mount, so read live values via a ref.
-  const live = useRef({ startMin, endMin, onCommit, onDragActive });
-  live.current = { startMin, endMin, onCommit, onDragActive };
+  const live = useRef({ startMin, endMin, onCommit, onDragActive, onSelect });
+  live.current = { startMin, endMin, onCommit, onDragActive, onSelect };
 
-  const makeEdge = (edge: DragState['edge']) =>
+  const makeResponder = (edge: DragState['edge']) =>
     PanResponder.create({
+      // Everything claims at touch start — the same timing as the edge handles
+      // and the column painter — so the scroll lock engages before the outer
+      // ScrollView can steal the gesture. A body touch that never really moves
+      // is treated as a tap (select) on release.
       onStartShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
         setDrag({ edge, dy: 0 });
@@ -111,6 +138,10 @@ function FreeBlockEditor({
       onPanResponderRelease: (_e, g) => {
         setDrag(null);
         live.current.onDragActive(false);
+        if (edge === 'move' && Math.abs(g.dy) <= 8) {
+          live.current.onSelect(); // tap, not a drag
+          return;
+        }
         const { start, end } = applyBlockDrag(
           edge,
           live.current.startMin,
@@ -128,8 +159,9 @@ function FreeBlockEditor({
       },
     });
 
-  const topPan = useRef(makeEdge('top')).current;
-  const bottomPan = useRef(makeEdge('bottom')).current;
+  const topPan = useRef(makeResponder('top')).current;
+  const bottomPan = useRef(makeResponder('bottom')).current;
+  const movePan = useRef(makeResponder('move')).current;
 
   let top = minToPx(startMin);
   let height = minToPx(endMin) - top;
@@ -137,24 +169,43 @@ function FreeBlockEditor({
     if (drag.edge === 'top') {
       top += drag.dy;
       height -= drag.dy;
-    } else {
+    } else if (drag.edge === 'bottom') {
       height += drag.dy;
+    } else {
+      top += drag.dy; // whole-block move keeps its length
     }
-    top = Math.max(0, Math.min(top, TRACK_H - 12));
-    height = Math.max(12, Math.min(height, TRACK_H - top));
+    if (drag.edge === 'move') {
+      // A move preserves length: clamp POSITION at the track edges instead of
+      // squishing the preview to a sliver (the commit math never shrinks it).
+      top = Math.max(0, Math.min(top, TRACK_H - height));
+    } else {
+      top = Math.max(0, Math.min(top, TRACK_H - 12));
+      height = Math.max(12, Math.min(height, TRACK_H - top));
+    }
   }
 
   return (
     <View
       style={[styles.freeBlock, { top, height }, drag ? styles.freeBlockActive : null]}
     >
-      <Pressable
-        accessibilityLabel={`Free ${w.start} to ${w.end}. Long press to remove.`}
-        onPress={onSelect}
-        onLongPress={onRemove}
-        delayLongPress={350}
+      {/* Body: tap selects, vertical drag moves the whole block. */}
+      <View
+        {...movePan.panHandlers}
+        accessibilityRole="button"
+        accessibilityLabel={`Free ${w.start} to ${w.end}. Drag to move; use the corner button to remove.`}
         style={StyleSheet.absoluteFill}
       />
+      {/* Visible delete — no more hidden long-press. Tight hitSlop so it can't
+          swallow the resize handles or the drag body on a one-hour block. */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Remove free time ${w.start} to ${w.end}`}
+        hitSlop={2}
+        onPress={onRemove}
+        style={styles.freeBlockDelete}
+      >
+        <X size={11} color={colors.onArt} strokeWidth={2.5} />
+      </Pressable>
       <View {...topPan.panHandlers} style={[styles.handle, styles.handleTop]}>
         <View style={styles.handleBar} />
       </View>
@@ -250,19 +301,39 @@ function NeighborhoodModal({
   const dayPrefs = useStore((s) => (date ? s.dayPrefsByDate[date] : undefined));
   const setDayPrefs = useStore((s) => s.setDayPrefs);
   const clearDayPrefs = useStore((s) => s.clearDayPrefs);
+  const [emptyWarn, setEmptyWarn] = useState(false);
+  // The modal instance is never unmounted (only `date` toggles), so clear the
+  // warning whenever the picker opens on a different day — otherwise a stale
+  // "pick at least one" from a prior day shows on a day with a valid selection.
+  useEffect(() => {
+    setEmptyWarn(false);
+  }, [date]);
 
   if (!date || !profile) return null;
   const selected = resolvePrefs(profile, dayPrefs).neighborhoods;
 
   function toggle(n: string) {
     const next = selected.includes(n) ? selected.filter((x) => x !== n) : [...selected, n];
-    if (next.length > 0) void setDayPrefs(date as string, { neighborhoods: next });
+    // At least one neighborhood is required (an empty set falls back to the
+    // profile default, so persisting [] is meaningless). Rather than a silent
+    // no-op with a still-lit chip, tell the user why the tap did nothing.
+    if (next.length > 0) {
+      setEmptyWarn(false);
+      void setDayPrefs(date as string, { neighborhoods: next });
+    } else {
+      setEmptyWarn(true);
+    }
   }
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      {/* No accessibilityRole here: the scrim wraps real interactive buttons
+          (chips, Done), and react-native-web renders role="button" as an
+          actual <button> — nesting one inside another is invalid HTML and
+          breaks hydration. Tap-to-dismiss still works via onPress alone;
+          "Done" below is the clear, accessible way to close for AT users. */}
       <Pressable style={styles.modalScrim} onPress={onClose}>
-        <Pressable style={styles.modalCard} onPress={() => {}}>
+        <Pressable accessibilityViewIsModal style={styles.modalCard} onPress={() => {}}>
           <Text style={styles.modalEyebrow}>NEIGHBORHOODS</Text>
           <Text style={styles.modalTitle}>
             {weekdayLabel(date)}, {monthDayLabel(date)}
@@ -275,6 +346,7 @@ function NeighborhoodModal({
                 <Pressable
                   key={n}
                   accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
                   onPress={() => toggle(n)}
                   style={[styles.nbChip, on && styles.nbChipOn]}
                 >
@@ -283,6 +355,9 @@ function NeighborhoodModal({
               );
             })}
           </View>
+          {emptyWarn ? (
+            <Text style={styles.modalWarn}>Pick at least one neighborhood.</Text>
+          ) : null}
           <View style={styles.modalActions}>
             <Pressable
               accessibilityRole="button"
@@ -329,12 +404,18 @@ export function WeekGrid({
   const [nbModalDate, setNbModalDate] = useState<string | null>(null);
 
   const plansByDate = useMemo(() => {
-    const map: Record<string, PlanItem[]> = {};
+    // Tag each merged item with its originating plan id: a day can have several
+    // windows, and two windows' plans could otherwise render the same venue id
+    // at the same start time, colliding React keys. Plan.id embeds the window,
+    // so it makes the render key window-scoped and unique.
+    const map: Record<string, (PlanItem & { _planId: string })[]> = {};
     for (const p of Object.values(plansByKey)) {
       if (!dates.includes(p.date)) continue;
       map[p.date] = [
         ...(map[p.date] ?? []),
-        ...p.items.filter((i) => i.kind !== 'walk' && i.kind !== 'break'),
+        ...p.items
+          .filter((i) => i.kind !== 'walk' && i.kind !== 'break')
+          .map((i) => ({ ...i, _planId: p.id })),
       ];
     }
     return map;
@@ -412,9 +493,13 @@ export function WeekGrid({
             new Date(`${d}T12:00:00Z`).getUTCDay()
           ];
           const overridden = !!dayPrefsByDate[d]?.neighborhoods?.length;
-          const nbCount = profile
-            ? resolvePrefs(profile, dayPrefsByDate[d]).neighborhoods.length
-            : 0;
+          const nbList = profile
+            ? resolvePrefs(profile, dayPrefsByDate[d]).neighborhoods
+            : [];
+          const nbLabel =
+            nbList.length > 0
+              ? `${nbAbbr(nbList[0])}${nbList.length > 1 ? ` +${nbList.length - 1}` : ''}`
+              : 'Anywhere';
           return (
             <View key={d} style={styles.dayHead}>
               <Pressable
@@ -446,17 +531,21 @@ export function WeekGrid({
               </Pressable>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Choose neighborhoods for ${d}`}
+                accessibilityLabel={`Neighborhoods for ${d}: ${nbList.join(', ') || 'anywhere'}`}
                 onPress={() => setNbModalDate(d)}
+                hitSlop={{ top: 2, bottom: 12, left: 4, right: 4 }}
                 style={[styles.nbButton, overridden && styles.nbButtonOn]}
               >
                 <MapPin
-                  size={9}
-                  color={overridden ? colors.accent : colors.textFaint}
-                  strokeWidth={2}
+                  size={11}
+                  color={overridden ? colors.accent : colors.textMuted}
+                  strokeWidth={2.2}
                 />
-                <Text style={[styles.nbButtonText, overridden && { color: colors.accent }]}>
-                  {nbCount}
+                <Text
+                  numberOfLines={1}
+                  style={[styles.nbButtonText, overridden && { color: colors.accent }]}
+                >
+                  {nbLabel}
                 </Text>
               </Pressable>
             </View>
@@ -510,7 +599,7 @@ export function WeekGrid({
                 if (h <= 2) return null;
                 return (
                   <Pressable
-                    key={`${item.id}-${item.startTime}`}
+                    key={`${item._planId}-${item.id}-${item.startTime}`}
                     accessibilityRole="button"
                     accessibilityLabel={`${item.title}, ${item.startTime}`}
                     onPress={() => onSelectDay(d)}
@@ -520,6 +609,11 @@ export function WeekGrid({
                       pressed && { backgroundColor: colors.plannedPressed },
                     ]}
                   >
+                    {h >= 34 ? (
+                      <Text numberOfLines={1} style={styles.planBlockKind}>
+                        {stopLabel(item.kind, item.startTime, item.tags).toUpperCase()}
+                      </Text>
+                    ) : null}
                     {h >= 20 ? (
                       <Text numberOfLines={1} style={styles.planBlockText}>
                         {item.title}
@@ -537,7 +631,16 @@ export function WeekGrid({
                       key={`${w.start}-${w.end}`}
                       window={w}
                       onCommit={(ns, ne) => resizeWindow(d, w, ns, ne)}
-                      onRemove={() => removeWindow(d, w)}
+                      onRemove={() =>
+                        // Removing free time also deletes any plan inside it,
+                        // so confirm like the other destructive actions.
+                        confirmDestructive(
+                          'Remove this free time?',
+                          `Removes ${w.start}–${w.end}. Any plan scheduled inside goes with it.`,
+                          'Remove',
+                          () => removeWindow(d, w),
+                        )
+                      }
                       onSelect={() => onSelectDay(d)}
                       onDragActive={onDragActive}
                     />
@@ -580,16 +683,23 @@ const styles = StyleSheet.create({
   nbButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 1,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
+    gap: 3,
+    maxWidth: '96%',
+    paddingHorizontal: 6,
+    paddingVertical: 4,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderStrong,
     backgroundColor: colors.surface,
   },
   nbButtonOn: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
-  nbButtonText: { fontSize: 10, color: colors.textMuted, fontWeight: font.weight.semibold },
+  nbButtonText: {
+    flexShrink: 1,
+    fontSize: 10,
+    color: colors.textMuted,
+    fontWeight: font.weight.semibold,
+    letterSpacing: 0.2,
+  },
   body: { flexDirection: 'row' },
   col: {
     flex: 1,
@@ -636,17 +746,34 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
   },
   freeBlockActive: { borderColor: colors.text },
+  freeBlockDelete: {
+    position: 'absolute',
+    top: 3,
+    right: 3,
+    width: 20,
+    height: 20,
+    borderRadius: radius.pill,
+    backgroundColor: colors.free,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 12,
+  },
   handle: {
     position: 'absolute',
     left: 0,
-    right: 0,
-    height: 16,
+    // Keep the handle bands clear of the delete button's column (20px button +
+    // 3px offset + margin) so a corner grab can never fire an accidental
+    // delete, and hang most of each band OUTSIDE the block (over empty grid)
+    // so a one-hour block keeps a real draggable body.
+    right: 26,
+    height: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 11,
   },
-  handleTop: { top: -5 },
-  handleBottom: { bottom: -5 },
-  handleBar: { width: 16, height: 3, borderRadius: 2, backgroundColor: colors.free },
+  handleTop: { top: -14 },
+  handleBottom: { bottom: -14 },
+  handleBar: { width: 28, height: 4, borderRadius: 2, backgroundColor: colors.free },
   planBlock: {
     position: 'absolute',
     left: 3,
@@ -659,6 +786,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     justifyContent: 'center',
   },
+  planBlockKind: {
+    color: colors.onArtMuted,
+    fontSize: 8,
+    lineHeight: 10,
+    fontWeight: font.weight.bold,
+    letterSpacing: 0.6,
+  },
   planBlockText: {
     color: colors.onArt,
     fontSize: 9,
@@ -668,7 +802,7 @@ const styles = StyleSheet.create({
   // Neighborhood modal
   modalScrim: {
     flex: 1,
-    backgroundColor: 'rgba(20,16,12,0.5)',
+    backgroundColor: colors.overlay,
     justifyContent: 'flex-end',
   },
   modalCard: {
@@ -686,6 +820,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: { color: colors.text, fontFamily: font.family.heading, fontSize: font.size.xl },
   modalHint: { color: colors.textMuted, fontSize: font.size.sm, marginBottom: spacing.xs },
+  modalWarn: { color: colors.accent, fontSize: font.size.sm, fontWeight: font.weight.medium },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   nbChip: {
     paddingVertical: spacing.sm,

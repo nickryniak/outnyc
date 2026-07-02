@@ -22,6 +22,7 @@ function readEnv(value: string | undefined): string {
 
 export const env = {
   ticketmasterKey: readEnv(process.env.EXPO_PUBLIC_TICKETMASTER_API_KEY),
+  seatgeekClientId: readEnv(process.env.EXPO_PUBLIC_SEATGEEK_CLIENT_ID),
   geminiKey: readEnv(process.env.EXPO_PUBLIC_GEMINI_API_KEY),
   googlePlacesKey: readEnv(process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY),
   supabaseUrl: readEnv(process.env.EXPO_PUBLIC_SUPABASE_URL),
@@ -42,9 +43,22 @@ export const providerFlags = {
     name: 'Ticketmaster (events)',
     isLive: has(env.ticketmasterKey),
   },
+  seatgeek: {
+    name: 'SeatGeek (events)',
+    isLive: has(env.seatgeekClientId),
+  },
   places: {
     name: 'Google Places (restaurants)',
     isLive: has(env.googlePlacesKey),
+  },
+  // Public NYC Open Data feeds — no key required, so these are always on.
+  nycOpenData: {
+    name: 'NYC Permitted Events (civic)',
+    isLive: true,
+  },
+  nycParks: {
+    name: 'NYC Parks events',
+    isLive: true,
   },
   geminiPlanner: {
     name: 'Gemini (LLM planning)',
@@ -61,7 +75,10 @@ export type ProviderFlagKey = keyof typeof providerFlags;
 /** Ordered list for the Settings screen. */
 export const PROVIDER_FLAG_LIST: ProviderInfo[] = [
   providerFlags.events,
+  providerFlags.seatgeek,
   providerFlags.places,
+  providerFlags.nycOpenData,
+  providerFlags.nycParks,
   providerFlags.geminiPlanner,
   providerFlags.edgePlanner,
 ];

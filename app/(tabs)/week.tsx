@@ -3,11 +3,13 @@
 // =============================================================================
 // The app IS this screen. A Mon-Sun calendar: paint or drag your free time,
 // plan blocks tile inside the green windows once generated, tap a day (or any
-// block) to expand it in place. One reshuffle control per scope: the week
-// button here, the day button in the panel, the swap control per block.
+// block) to expand it in place. Planning is per day: the panel's Plan/Reshuffle
+// buttons and the per-block Swap. The only week-scope action is Clear week.
 // =============================================================================
 
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import { Home } from 'lucide-react-native';
 import { useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,20 +18,22 @@ import { DayPanel } from '../../components/DayPanel';
 import { Skyline } from '../../components/Skyline';
 import { WeekGrid } from '../../components/WeekGrid';
 import { Button, Caption, LoadingView } from '../../components/ui';
+import { confirmDestructive } from '../../lib/confirm';
 import { useStore } from '../../lib/store';
 import { colors, font, radius, spacing } from '../../lib/theme';
 import { addDays, mondayOf, todayNY, weekDates, weekRangeLabel } from '../../lib/time';
 
 export default function WeekScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const loadStatus = useStore((s) => s.loadStatus);
   const availabilityByDate = useStore((s) => s.availabilityByDate);
   const plansByKey = useStore((s) => s.plansByKey);
+  const dayPrefsByDate = useStore((s) => s.dayPrefsByDate);
   const setAvailability = useStore((s) => s.setAvailability);
-  const planWeek = useStore((s) => s.planWeek);
+  const clearWeek = useStore((s) => s.clearWeek);
 
   const [weekOffset, setWeekOffset] = useState(0);
-  const [busy, setBusy] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [scrollEnabled, setScrollEnabled] = useState(true);
   const scrollRef = useRef<ScrollView>(null);
@@ -46,14 +50,22 @@ export default function WeekScreen() {
   const anyPlans = dates.some((d) =>
     Object.values(plansByKey).some((p) => p.date === d && p.items.length > 0),
   );
+  // A day-only override carries more than just its `date` key (a cleared one is
+  // just `{date}`), so this detects real neighborhood/price/party picks to clear.
+  const anyDayPrefs = dates.some(
+    (d) => dayPrefsByDate[d] && Object.keys(dayPrefsByDate[d]).length > 1,
+  );
 
-  async function onPlanWeek() {
-    setBusy(true);
-    try {
-      await planWeek(dates);
-    } finally {
-      setBusy(false);
-    }
+  function onClearWeek() {
+    confirmDestructive(
+      'Clear this week?',
+      'Removes the free time, plans, and neighborhood picks for all 7 days shown. Your bucket list is kept.',
+      'Clear week',
+      () => {
+        setSelectedDate(null);
+        void clearWeek(dates);
+      },
+    );
   }
 
   function selectDay(date: string) {
@@ -72,11 +84,21 @@ export default function WeekScreen() {
           style={StyleSheet.absoluteFill}
         />
         <View style={[styles.headerText, { top: insets.top + 4 }]}>
-          <Text style={styles.headerEyebrow}>WEEK OF</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back to the welcome screen"
+            onPress={() => router.push('/welcome')}
+            hitSlop={10}
+            style={styles.brandRow}
+          >
+            <Home size={12} color={colors.onArtMuted} strokeWidth={2.4} />
+            <Text style={styles.headerEyebrow}>OUTNYC · HOME</Text>
+          </Pressable>
           <View style={styles.headerRow}>
             <Text style={styles.headerTitle}>{weekRangeLabel(monday)}</Text>
             <View style={styles.weekNav}>
               <Pressable
+                accessibilityRole="button"
                 accessibilityLabel="Previous week"
                 onPress={() => {
                   setWeekOffset((o) => o - 1);
@@ -87,6 +109,7 @@ export default function WeekScreen() {
                 <Text style={styles.navGlyph}>‹</Text>
               </Pressable>
               <Pressable
+                accessibilityRole="button"
                 accessibilityLabel="Next week"
                 onPress={() => {
                   setWeekOffset((o) => o + 1);
@@ -108,7 +131,7 @@ export default function WeekScreen() {
       >
         <Caption muted>
           Tap an hour to add free time, or drag down a day to paint a range. Tap
-          the pin under a day to set its neighborhood.
+          the neighborhood tag under a day to change where it happens.
         </Caption>
 
         <WeekGrid
@@ -122,20 +145,19 @@ export default function WeekScreen() {
           onDragActive={(active) => setScrollEnabled(!active)}
         />
 
-        <Button
-          label={anyPlans ? 'Reshuffle week' : 'Plan my week'}
-          onPress={() => void onPlanWeek()}
-          loading={busy}
-          disabled={!anyFree}
-        />
-        {!anyFree ? (
-          <Caption muted>Mark some free time first, then plan the week in one tap.</Caption>
+        {!anyFree && !anyPlans ? (
+          <Caption muted>
+            Mark some free time, then tap the day to plan it.
+          </Caption>
+        ) : null}
+        {anyFree || anyPlans || anyDayPrefs ? (
+          <Button label="Clear week" variant="ghost" onPress={onClearWeek} />
         ) : null}
 
         {selectedDate ? (
           <DayPanel date={selectedDate} onClose={() => setSelectedDate(null)} />
         ) : anyFree ? (
-          <Caption muted>Tap a day or any block to see and edit its plan.</Caption>
+          <Caption muted>Tap a day or any block to open, plan, and edit it.</Caption>
         ) : null}
       </ScrollView>
     </View>
@@ -146,6 +168,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: { overflow: 'hidden' },
   headerText: { position: 'absolute', left: spacing.lg, right: spacing.lg },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start' },
   headerEyebrow: {
     color: colors.onArtMuted,
     fontSize: font.size.xs,

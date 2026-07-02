@@ -8,6 +8,8 @@
 
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { stopLabel } from '../lib/labels';
+import { mapsUrl } from '../lib/maps';
 import { colors, font, kindColor, radius, spacing } from '../lib/theme';
 import { format12h, toMinutes } from '../lib/time';
 import type { PlanItem, PriceTier } from '../lib/types';
@@ -16,25 +18,14 @@ function priceLabel(tier?: PriceTier): string {
   return tier ? '$'.repeat(tier) : '';
 }
 
-function kindLabel(kind: PlanItem['kind']): string {
-  switch (kind) {
-    case 'restaurant':
-      return 'Eat';
-    case 'bar':
-      return 'Drink';
-    case 'event':
-      return 'Live';
-    case 'activity':
-      return 'Do';
-    case 'bucket':
-      return 'Bucket list';
-    case 'walk':
-      return 'Walk';
-    case 'break':
-      return 'Break';
-    default:
-      return kind;
-  }
+/** "★ 4.6 (1.2k)" when a review score exists, else '' (curated seed has none). */
+function ratingText(rating?: number, count?: number): string {
+  if (rating == null) return '';
+  const c =
+    count != null
+      ? ` (${count >= 1000 ? `${(count / 1000).toFixed(1)}k` : count})`
+      : '';
+  return `★ ${rating.toFixed(1)}${c}`;
 }
 
 async function openExternal(url: string): Promise<void> {
@@ -43,15 +34,6 @@ async function openExternal(url: string): Promise<void> {
   } catch (err) {
     console.warn('[link] failed to open url:', err);
   }
-}
-
-function mapsUrl(item: PlanItem): string | null {
-  const label = encodeURIComponent(item.title);
-  if (item.lat != null && item.lng != null) {
-    return `https://maps.apple.com/?q=${label}&ll=${item.lat},${item.lng}`;
-  }
-  if (item.address) return `https://maps.apple.com/?q=${encodeURIComponent(item.address)}`;
-  return null;
 }
 
 export function PlanItemCard({ item, stopNumber }: { item: PlanItem; stopNumber?: number }) {
@@ -87,14 +69,19 @@ export function PlanItemCard({ item, stopNumber }: { item: PlanItem; stopNumber?
           <Text style={styles.time}>
             {format12h(item.startTime)} – {format12h(item.endTime)}
           </Text>
-          <Text style={[styles.kind, { color: tint }]}>{kindLabel(item.kind).toUpperCase()}</Text>
+          <Text style={[styles.kind, { color: tint }]}>
+            {stopLabel(item.kind, item.startTime, item.tags).toUpperCase()}
+          </Text>
         </View>
 
         <Text style={styles.title}>{item.title}</Text>
 
+        {/* Provenance for bucket stops is the FROM YOUR LIST kind label above —
+            no duplicate "from your list" suffix here. */}
         <Text style={styles.sub}>
-          {[item.neighborhood, priceLabel(item.priceTier)].filter(Boolean).join('  ·  ')}
-          {item.bucketItemId ? '  ·  from your list' : ''}
+          {[item.neighborhood, priceLabel(item.priceTier), ratingText(item.rating, item.ratingCount)]
+            .filter(Boolean)
+            .join('  ·  ')}
         </Text>
 
         {item.description ? <Text style={styles.desc}>{item.description}</Text> : null}
@@ -115,16 +102,16 @@ export function PlanItemCard({ item, stopNumber }: { item: PlanItem; stopNumber?
           ) : (
             <Text style={styles.noSite}>No website listed</Text>
           )}
-          {directions ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Directions to ${item.title}`}
-              onPress={() => openExternal(directions)}
-              style={({ pressed }) => [styles.actionGhost, pressed && styles.pressed]}
-            >
-              <Text style={styles.actionGhostText}>Directions ↗</Text>
-            </Pressable>
-          ) : null}
+          {/* mapsUrl always resolves (name+area search fallback), so every stop
+              gets Directions — including user-typed bucket wishes. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Directions to ${item.title}`}
+            onPress={() => openExternal(directions)}
+            style={({ pressed }) => [styles.actionGhost, pressed && styles.pressed]}
+          >
+            <Text style={styles.actionGhostText}>Directions ↗</Text>
+          </Pressable>
         </View>
       </View>
     </View>
@@ -209,10 +196,13 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   actionPrimary: {
-    paddingVertical: spacing.xs + 2,
+    minHeight: 44,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
     backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   actionPrimaryText: {
     color: colors.onArt,
@@ -220,11 +210,14 @@ const styles = StyleSheet.create({
     fontWeight: font.weight.semibold,
   },
   actionGhost: {
-    paddingVertical: spacing.xs + 2,
+    minHeight: 44,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.borderStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   actionGhostText: {
     color: colors.text,

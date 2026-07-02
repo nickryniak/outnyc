@@ -41,18 +41,28 @@ const DATA_SOURCES: { name: string; detail: string; status: SourceStatus }[] = [
   },
   {
     name: 'Live concerts, shows, and tickets',
-    detail: 'Real listings with dates and ticket links.',
+    detail: 'Ticketmaster listings with dates and ticket links.',
     status: providerFlags.events.isLive ? 'On' : 'Coming soon',
   },
   {
+    name: 'More live events (SeatGeek)',
+    detail: 'A second real ticketed-event feed — indie venues, sports, comedy.',
+    status: providerFlags.seatgeek.isLive ? 'On' : 'Coming soon',
+  },
+  {
     name: 'Live restaurant and bar listings',
-    detail: 'Fresh spots with hours, photos, and reviews.',
+    detail: 'Google Places spots with real ratings, reviews, and websites.',
     status: providerFlags.places.isLive ? 'On' : 'Coming soon',
   },
   {
-    name: 'Pop-ups and one-off happenings',
-    detail: 'Flash events, markets, and openings that are not regular venues.',
-    status: 'Planned',
+    name: 'City permitted events',
+    detail: 'Real farmers markets, parades, street fairs, and plaza events.',
+    status: providerFlags.nycOpenData.isLive ? 'On' : 'Coming soon',
+  },
+  {
+    name: 'NYC Parks programming',
+    detail: 'Real concerts, nature walks, and free events in city parks.',
+    status: providerFlags.nycParks.isLive ? 'On' : 'Coming soon',
   },
   {
     name: 'Community boards and groups',
@@ -162,7 +172,7 @@ export default function SettingsScreen() {
         <Heading>Reminders</Heading>
         <Caption muted>
           Get a nudge before each stop when you lock in a plan. Everything stays
-          on your phone.
+          on your device.
         </Caption>
         <Button
           label="Turn on reminders"
@@ -186,7 +196,7 @@ export default function SettingsScreen() {
 
       <Card>
         <Heading>About OutNYC</Heading>
-        <Caption muted>Your night out, planned. Made for New York City.</Caption>
+        <Caption muted>Your day out, planned. Made for New York City.</Caption>
         <Button
           label="View intro"
           variant="ghost"

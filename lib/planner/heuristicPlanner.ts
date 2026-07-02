@@ -33,8 +33,10 @@ import {
   allowedStart,
   candidateDuration,
   hash,
+  matchesNeighborhoods,
   mealSlotAt,
   rebuildConnectors,
+  venueKey,
   type MealSlot,
 } from './slotUtils';
 
@@ -45,6 +47,147 @@ const MAX_BARS = 2;
 // Longest single visit for a fixed/all-day event, so a market does not eat a
 // whole window.
 const MAX_FIXED_VISIT = 150;
+// Longest a single flexible stop may be stretched to swallow an idle gap, so
+// tightening the day never balloons one activity into the whole evening.
+const MAX_STRETCH = 180;
+// A "soft" (recurring civic/park program, not a ticketed show) fixed-time
+// candidate is dropped rather than forced in if it would strand the day with
+// more than this much dead time after something else is already scheduled.
+const MAX_ISOLATION_GAP = 120;
+
+/**
+ * Tighten the day so blocks flow without big empty gaps: stretch each FLEXIBLE
+ * stop's end toward the next stop's start. A 15-minute transit buffer is left
+ * only when the next stop is in a DIFFERENT (known) neighborhood — a walk
+ * connector then fills it, so there is no visible hole; same-neighborhood stops
+ * run back to back. Fixed-time stops (real events, meal anchors) are never
+ * stretched past their true end, and the trailing tail after the last stop is
+ * left alone (end-of-day, not a gap "between" activities). Pure + deterministic;
+ * mutates the passed items.
+ */
+export function closeGaps(
+  items: PlanItem[],
+  winEnd: number,
+  fixedIds: Set<string>,
+): PlanItem[] {
+  const sorted = [...items].sort((a, b) => toMinutes(a.startTime) - toMinutes(b.startTime));
+  for (let i = 0; i < sorted.length - 1; i += 1) {
+    const cur = sorted[i];
+    if (fixedIds.has(cur.id)) continue; // never stretch a real event / meal anchor
+    const next = sorted[i + 1];
+    const curStart = toMinutes(cur.startTime);
+    const curEnd = toMinutes(cur.endTime);
+    const nextStart = toMinutes(next.startTime);
+    // Reserve a transit buffer ONLY when rebuildConnectors will actually insert
+    // a walk — i.e. both neighborhoods are known AND differ. If either side has
+    // no neighborhood (e.g. a location-agnostic bucket pick), no walk is drawn,
+    // so reserving 15 min there would just leave a dead hole; run back to back.
+    const needsWalk =
+      !!cur.neighborhood && !!next.neighborhood && cur.neighborhood !== next.neighborhood;
+    const buffer = needsWalk ? GAP_MIN : 0;
+    const target = Math.min(nextStart - buffer, curStart + MAX_STRETCH, winEnd);
+    if (target > curEnd) cur.endTime = fromMinutes(target);
+  }
+  return sorted;
+}
+
+/**
+ * Compact the packed schedule so idle time between stops never exceeds the
+ * transit buffer, wherever venue hours allow it:
+ *   pass 1 (pull earlier): every flexible stop's start moves as early as its
+ *     meal/venue gating allows, down to prevEnd + buffer — this erases holes
+ *     the packer's "nudge forward and retry" left behind.
+ *   pass 2 (close leading slack): if the first pinned or hours-gated stop still
+ *     has a hole before it, the flexible run at the HEAD of the day shifts
+ *     later as one piece to sit flush against it — the day simply starts later
+ *     instead of trapping dead time in the middle.
+ *   (closeGaps then stretches flexible stops toward the next as a final pass.)
+ * Real fixed-time events never move; meal anchors keep their start (meals
+ * happen at meal times). Deterministic; mutates the passed items.
+ */
+export function compactStops(
+  items: PlanItem[],
+  winStart: number,
+  winEnd: number,
+  realFixedIds: Set<string>,
+  anchorIds: Set<string>,
+  candById: Map<string, Candidate>,
+): PlanItem[] {
+  const sorted = [...items].sort((a, b) => toMinutes(a.startTime) - toMinutes(b.startTime));
+  const buffer = (a: PlanItem, b: PlanItem) =>
+    a.neighborhood && b.neighborhood && a.neighborhood !== b.neighborhood ? GAP_MIN : 0;
+  const movable = (s: PlanItem) => !realFixedIds.has(s.id) && !anchorIds.has(s.id);
+
+  /** True if `stop` may START at `t` without breaking hours or meal rules. */
+  const canStartAt = (stop: PlanItem, t: number): boolean => {
+    const cand = candById.get(stop.id);
+    if (cand && !allowedStart(cand, t)) return false;
+    if (stop.kind === 'restaurant') {
+      // One restaurant per meal slot: moving into a slot that another stop
+      // already occupies would double-book the meal.
+      const slot = mealSlotAt(t);
+      if (slot !== mealSlotAt(toMinutes(stop.startTime))) {
+        for (const other of sorted) {
+          if (other === stop || other.kind !== 'restaurant') continue;
+          if (mealSlotAt(toMinutes(other.startTime)) === slot) return false;
+        }
+      }
+    }
+    return true;
+  };
+
+  const shiftTo = (stop: PlanItem, t: number): void => {
+    const dur = toMinutes(stop.endTime) - toMinutes(stop.startTime);
+    stop.startTime = fromMinutes(t);
+    stop.endTime = fromMinutes(t + dur);
+  };
+
+  // Pass 1: pull each flexible stop's start as early as gating allows.
+  for (let i = 0; i < sorted.length; i += 1) {
+    const cur = sorted[i];
+    if (!movable(cur)) continue;
+    const prev = i > 0 ? sorted[i - 1] : undefined;
+    const lower = prev ? toMinutes(prev.endTime) + buffer(prev, cur) : winStart;
+    const curS = toMinutes(cur.startTime);
+    for (let t = lower; t < curS; t += 5) {
+      if (canStartAt(cur, t)) {
+        shiftTo(cur, t);
+        break;
+      }
+    }
+  }
+
+  // Pass 2: close the hole before the first pinned/gated stop by moving the
+  // head run later as one piece. Only the run anchored at the window start can
+  // shift later without just relocating the hole, so we handle exactly that.
+  for (let i = 1; i < sorted.length; i += 1) {
+    const cur = sorted[i];
+    const prev = sorted[i - 1];
+    const gap = toMinutes(cur.startTime) - toMinutes(prev.endTime) - buffer(prev, cur);
+    if (gap <= 0) continue;
+    const run = sorted.slice(0, i);
+    if (!run.every(movable)) break;
+    let shift = gap;
+    while (shift > 0) {
+      const ok = run.every((s) => {
+        const t = toMinutes(s.startTime) + shift;
+        const dur = toMinutes(s.endTime) - toMinutes(s.startTime);
+        return t + dur <= winEnd && canStartAt(s, t);
+      });
+      if (ok) break;
+      // Step down but never below zero: a gap that isn't a multiple of 5 (live
+      // events have odd-minute starts) must not underflow into a NEGATIVE
+      // shift, which would slide the run before winStart / into gated hours.
+      shift = shift > 5 ? shift - 5 : 0;
+    }
+    if (shift > 0) {
+      for (const s of run) shiftTo(s, toMinutes(s.startTime) + shift);
+    }
+    break; // later holes are absorbed by the stretch pass
+  }
+
+  return sorted;
+}
 
 function withinPrice(tier: PriceTier | undefined, price: PriceRange): boolean {
   if (tier == null) return true; // unknown price never excludes
@@ -193,23 +336,38 @@ export class HeuristicPlanner implements Planner {
         ? { min: req.price.min, max: Math.min(req.price.max, req.price.min + 1) as PriceTier }
         : req.price;
 
+    // A picked neighborhood is respected end to end: every pool drops venues in
+    // neighborhoods the user did NOT select (location-agnostic picks, like a
+    // bucket wish with no set area, always stay). This is applied at EVERY price
+    // widening below — the planner never widens the neighborhood filter, only
+    // price. So no reshuffle or starvation fallback can smuggle in a stop across
+    // town.
+    const inArea = (c: Candidate) => matchesNeighborhoods(c.neighborhood, req.neighborhoods);
+
     /** Build the candidate pools for a price range, honoring the exclusions. */
     const buildPools = (price: PriceRange, honorExclusions: boolean) => {
-      const skip = (c: Candidate) => honorExclusions && excluded.has(c.id);
+      // Excluded by raw id OR by venue identity: a bucket wish ("Jazz set at
+      // the Village Vanguard") and a curated/live listing for the SAME real
+      // place ("Live Jazz at the Village Vanguard") must both be caught, even
+      // though they carry different ids.
+      const skip = (c: Candidate) =>
+        honorExclusions && (excluded.has(c.id) || excluded.has(venueKey(c.name)));
       return {
         buckets: req.bucketList
           .filter((b) => !b.done)
           .filter((b) => withinPrice(b.priceTier, price))
           .map(bucketToCandidate)
-          .filter((c) => !skip(c)),
-        events: req.events.filter((c) => withinPrice(c.priceTier, price) && !skip(c)),
-        places: req.places.filter((c) => withinPrice(c.priceTier, price) && !skip(c)),
+          .filter((c) => inArea(c) && !skip(c)),
+        events: req.events.filter((c) => inArea(c) && withinPrice(c.priceTier, price) && !skip(c)),
+        places: req.places.filter((c) => inArea(c) && withinPrice(c.priceTier, price) && !skip(c)),
       };
     };
 
-    // Never-repeat with graceful widening: exclusions first; if the fresh pools
-    // are starved, widen the price filter one notch, then all the way, and only
-    // when the whole catalog is exhausted allow previously seen candidates back.
+    // Never-repeat is ABSOLUTE: if the fresh pools are starved we widen the
+    // PRICE filter (one notch, then fully) but the exclusion list is always
+    // honored — a venue the user has already been given this week never comes
+    // back as if it were a fresh pick. When the catalog is genuinely exhausted
+    // the day honestly gets fewer stops instead of silently repeating.
     let pools = buildPools(basePrice, true);
     if (pools.places.length < 3 || pools.events.length < 2) {
       const widened: PriceRange = {
@@ -219,9 +377,6 @@ export class HeuristicPlanner implements Planner {
       pools = buildPools(widened, true);
       if (pools.places.length + pools.events.length < 3) {
         pools = buildPools({ min: 1, max: 4 }, true);
-        if (pools.places.length + pools.events.length < 3) {
-          pools = buildPools({ min: 1, max: 4 }, false);
-        }
       }
     }
 
@@ -287,12 +442,24 @@ export class HeuristicPlanner implements Planner {
       // On a tie, the meal anchor is placed first so it is not crowded out.
       return (anchorIds.has(a.id) ? 0 : 1) - (anchorIds.has(b.id) ? 0 : 1);
     });
-    const flexible = preference.filter((c) => !hasTimes(c) && !anchorIds.has(c.id));
+    // A flexible candidate for the SAME real place as an already-committed
+    // fixed event (a bucket wish for "the Village Vanguard" alongside a real
+    // Vanguard show) must never enter the flexible pool at all — otherwise it
+    // could get placed by a fill pass that runs BEFORE the fixed event itself
+    // is pushed, which a same-pass venue check can't catch after the fact.
+    const fixedVenueKeys = new Set(fixed.map((f) => venueKey(f.name)));
+    const flexible = preference.filter(
+      (c) => !hasTimes(c) && !anchorIds.has(c.id) && !fixedVenueKeys.has(venueKey(c.name)),
+    );
 
     const items: PlanItem[] = [];
     let cursor = winStart;
     let order = 0;
     const usedIds = new Set<string>();
+    // Venue-identity dedup: a bucket wish and a curated/live listing for the
+    // SAME real place must never both land in one day's plan, even though
+    // they carry different ids (see venueKey's doc comment).
+    const usedVenueKeys = new Set<string>();
     const usedMealSlots = new Set<MealSlot>();
     let barCount = 0;
 
@@ -311,13 +478,18 @@ export class HeuristicPlanner implements Planner {
         lng: cand.lng,
         address: cand.address,
         bookingUrl: cand.bookingUrl,
+        rating: cand.rating,
+        ratingCount: cand.ratingCount,
         description: cand.description,
         note: whyNote(cand, req),
+        tags: cand.tags,
+        cuisine: cand.cuisine,
         sourceId: cand.kind === 'bucket' ? undefined : cand.id,
         bucketItemId: cand.kind === 'bucket' ? cand.id : undefined,
       });
       order += 1;
       usedIds.add(cand.id);
+      usedVenueKeys.add(venueKey(cand.name));
       if (cand.kind === 'restaurant') usedMealSlots.add(mealSlotAt(start));
       if (cand.kind === 'bar') barCount += 1;
       cursor = end + GAP_MIN;
@@ -325,6 +497,7 @@ export class HeuristicPlanner implements Planner {
 
     /** True if a flexible candidate may be placed starting at `start`. */
     const mayPlace = (cand: Candidate, start: number): boolean => {
+      if (usedVenueKeys.has(venueKey(cand.name))) return false; // same real place already in today's plan
       if (!allowedStart(cand, start)) return false;
       if (cand.kind === 'restaurant') {
         const slot = mealSlotAt(start);
@@ -376,8 +549,37 @@ export class HeuristicPlanner implements Planner {
       const evE = Math.min(toMinutes(ev.endTime as string), winEnd, evS + MAX_FIXED_VISIT);
       if (evE - evS < 20) continue; // too little of it left to be worth going
       if (evS < cursor) continue; // no room before this event; skip it
+      // Snapshot BEFORE filling: fillUntil's own "nudge forward when nothing
+      // fits" fallback silently advances the cursor even when it places
+      // nothing, which would otherwise hide the true size of an unfillable
+      // gap from the isolation check below.
+      const cursorBeforeFill = cursor;
       fillUntil(evS, true);
       if (evS < cursor) continue; // a filler overran; skip rather than overlap
+      // A "soft" (drop-in, non-ticketed) event isolated by a big dead stretch
+      // AFTER the day has already started — with nothing available to bridge
+      // it — is worse than just not including it. A real ticket is always
+      // kept regardless of the gap it needs. Measure the gap from the END OF
+      // THE LAST REAL STOP anywhere in the plan so far (not the exploratory
+      // "nudge forward" cursor, which advances even when nothing more fits —
+      // and NOT gated on whether THIS fillUntil call specifically placed
+      // something, since one early filler stop followed by a long unfillable
+      // stretch must still count as isolated).
+      if (ev.soft) {
+        const lastPlaced = items.length > 0 ? items[items.length - 1] : null;
+        const trueGapStart = lastPlaced ? toMinutes(lastPlaced.endTime) : winStart;
+        if (lastPlaced && evS - trueGapStart > MAX_ISOLATION_GAP) {
+          // Undo the nudge-only cursor advance so a dropped event never
+          // pollutes the next fixed event's own gap math.
+          cursor = cursorBeforeFill;
+          continue;
+        }
+      }
+      // A flexible candidate for the SAME real place is never even in the
+      // flexible pool (the pre-filter above), so two DIFFERENT fixed events
+      // that merely share a venue name (e.g. a matinee and an evening
+      // showtime at Film Forum) are independent real listings and must NOT be
+      // deduped just because venueKey() collapses them.
       pushStop(ev, evS, evE);
     }
     fillUntil(winEnd, false);
@@ -385,6 +587,21 @@ export class HeuristicPlanner implements Planner {
     // If nothing fit (e.g. tiny window), leave items empty — the UI shows an
     // empty state explaining why.
     void totalMin;
+
+    // Tighten the day so idle time between stops never exceeds transit time:
+    // pull starts earlier, close any leading hole, then stretch flexible stops
+    // toward the next. Only REAL fixed-time events are fully pinned; meal
+    // anchors keep their start (meals happen at meal times) but may run longer
+    // (a leisurely dinner beats a dead hour before a show).
+    const realFixedIds = new Set<string>(
+      fixed.filter((f) => !anchorIds.has(f.id)).map((f) => f.id),
+    );
+    const candById = new Map<string, Candidate>();
+    for (const c of [...pools.buckets, ...pools.events, ...pools.places, ...anchors]) {
+      candById.set(c.id, c);
+    }
+    const compacted = compactStops(items, winStart, winEnd, realFixedIds, anchorIds, candById);
+    const tightened = closeGaps(compacted, winEnd, realFixedIds);
 
     return {
       id: `plan-${req.date}-${req.window.start}-${req.window.end}-${req.modifier ?? 'base'}-${seed}`,
@@ -395,7 +612,7 @@ export class HeuristicPlanner implements Planner {
       partySize: req.partySize,
       generatedBy: 'heuristic',
       modifier: req.modifier,
-      items: rebuildConnectors(items),
+      items: rebuildConnectors(tightened),
       createdAt: new Date().toISOString(),
     };
   }

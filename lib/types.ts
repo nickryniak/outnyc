@@ -99,6 +99,13 @@ export interface PlanItem {
   address?: string;
   /** Deep-link out for "Book"/"Tickets" (the app only Linking-opens this). */
   bookingUrl?: string;
+  /**
+   * Average review score (0–5) from the source (e.g. Google Places), when
+   * available. Curated seed data has no reviews, so this is usually undefined.
+   */
+  rating?: number;
+  /** Number of reviews behind `rating`, when available. */
+  ratingCount?: number;
   /** Id of the upstream candidate (event/place) this stop came from, if any. */
   sourceId?: string;
   /** If this stop satisfies a bucket item, link it back. */
@@ -107,6 +114,10 @@ export interface PlanItem {
   description?: string;
   /** One-line "why this pick" from the planner, plus walk-connector notes. */
   note?: string;
+  /** Interest tags carried from the source candidate (drives stop labels). */
+  tags?: string[];
+  /** Cuisine label for restaurants (e.g. 'Italian', 'Coffee'), when known. */
+  cuisine?: string;
 }
 
 /** A packed itinerary for one (date, window). Mirrors public.plan. */
@@ -153,9 +164,22 @@ export interface Candidate {
   lng?: number;
   address?: string;
   bookingUrl?: string;
+  /** Average review score (0–5) from the source, when available. */
+  rating?: number;
+  /** Number of reviews behind `rating`, when available. */
+  ratingCount?: number;
   /** Short venue description shown on plan blocks. */
   description?: string;
   tags: string[];
+  /** Cuisine label for restaurants (e.g. 'Italian', 'Coffee'), when known. */
+  cuisine?: string;
+  /**
+   * True for recurring, drop-in civic/park programs (not ticketed one-off
+   * events) — the planner may skip one of these rather than force an
+   * unfillable gap around it, since missing a free class is low-stakes
+   * compared to dropping a real paid ticket.
+   */
+  soft?: boolean;
 }
 
 /**

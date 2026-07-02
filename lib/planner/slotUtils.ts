@@ -116,6 +116,74 @@ export function allowedStart(c: Candidate, startMin: number): boolean {
   return true;
 }
 
+/**
+ * Split a possibly multi-neighborhood label into normalized tokens, so a venue
+ * tagged "SoHo / Nolita" or "Chelsea & Flatiron" matches a pick of either. We
+ * split on slashes, commas, ampersands, and a standalone "and".
+ */
+export function neighborhoodTokens(neighborhood: string): string[] {
+  return neighborhood
+    .split(/[/,&]|\band\b/i)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/**
+ * True if a candidate's neighborhood satisfies the day's selected set. Rules,
+ * in order:
+ *   - An empty selection matches everything (no filter is set for the day).
+ *   - A candidate with NO neighborhood is location-agnostic — e.g. one of the
+ *     user's own bucket wishes with no set area, or a citywide pick — and always
+ *     qualifies (it can happen anywhere, including the selected neighborhoods).
+ *   - Otherwise at least one of the candidate's neighborhood tokens must be one
+ *     of the selected ones (case-insensitive). A venue in a neighborhood the
+ *     user did NOT pick is ALWAYS excluded — there is no widening that re-admits
+ *     it, so a picked neighborhood is respected end to end.
+ */
+export function matchesNeighborhoods(
+  neighborhood: string | undefined,
+  selected: string[],
+): boolean {
+  if (selected.length === 0) return true;
+  if (!neighborhood || !neighborhood.trim()) return true;
+  const want = new Set(selected.map((n) => n.trim().toLowerCase()).filter(Boolean));
+  if (want.size === 0) return true;
+  return neighborhoodTokens(neighborhood).some((t) => want.has(t));
+}
+
+/**
+ * STRICT filter to the selected neighborhoods. Drops every candidate whose
+ * neighborhood is set and not selected; keeps in-neighborhood and
+ * location-agnostic (no-neighborhood) picks. There is deliberately NO
+ * "fall back to everything if empty" escape hatch — an empty result is honest
+ * ("nothing here fits your neighborhoods") and is far better than silently
+ * showing a venue across town, which was the old bug.
+ */
+export function filterToNeighborhoods<T extends { neighborhood?: string }>(
+  candidates: T[],
+  selected: string[],
+): T[] {
+  return candidates.filter((c) => matchesNeighborhoods(c.neighborhood, selected));
+}
+
+/**
+ * Normalize a candidate name to a venue-identity key, so a user's own bucket
+ * wish ("Jazz set at the Village Vanguard") and a curated/live listing for the
+ * SAME real place ("Live Jazz at the Village Vanguard") are recognized as one
+ * venue rather than two different "fresh" picks. Common English phrasing is
+ * "<activity> at [the] <venue>" — when present, the venue after "at" IS the
+ * identity; otherwise the whole (already venue-only) name is used as-is.
+ */
+export function venueKey(name: string): string {
+  const m = /\bat\s+(?:the\s+)?(.+)$/i.exec(name.trim());
+  const core = m ? m[1] : name;
+  return core
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
 /** True when two candidates are the same category for swap purposes. */
 export function sameCategory(a: Candidate['kind'], b: Candidate['kind']): boolean {
   const food = (k: Candidate['kind']) => k === 'restaurant';

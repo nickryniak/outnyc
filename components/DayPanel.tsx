@@ -22,17 +22,84 @@ import {
   View,
 } from 'react-native';
 
+import { confirmDestructive } from '../lib/confirm';
 import { INTEREST_TAGS, NEIGHBORHOODS } from '../lib/constants';
 import { holidayFor } from '../lib/holidays';
-import { planKey, resolvePrefs, useStore } from '../lib/store';
-import { colors, font, radius, spacing } from '../lib/theme';
+import { stopLabel } from '../lib/labels';
+import { mapsUrl } from '../lib/maps';
+import { CROSS_CATEGORY_INTENTS, planKey, resolvePrefs, useStore, type SwapIntent } from '../lib/store';
+import { colors, font, kindColor, radius, spacing } from '../lib/theme';
 import { format12h, monthDayLabel, weekdayLabel } from '../lib/time';
 import type { Candidate, PlanItem, PriceTier, TimeWindow } from '../lib/types';
 
 const PRICE_TIERS: PriceTier[] = [1, 2, 3, 4];
 
+/** Human label for a swap intent, used for both the chip and failure copy. */
+const INTENT_LABEL: Record<SwapIntent, string> = {
+  cheaper: 'Cheaper',
+  pricier: 'Pricier',
+  surprise: 'Surprise me',
+  indoor: 'Indoors',
+  italian: 'Italian',
+  pizza: 'Pizza',
+  japanese: 'Japanese',
+  french: 'French',
+  southern: 'Southern',
+  greek: 'Greek',
+  deli: 'Deli',
+  mediterranean: 'Mediterranean',
+  peruvian: 'Peruvian',
+  bakery: 'Bakery',
+  coffee: 'Coffee',
+  rooftop: 'Rooftop',
+  'live-music': 'Live music',
+  comedy: 'Comedy',
+  art: 'Art',
+  outdoors: 'Outdoors',
+  film: 'Film',
+};
+
+/**
+ * Every swap-intent chip, shown on EVERY stop regardless of its current kind,
+ * grouped for legibility. "Adjust" stays within today's current stop kind;
+ * "Cuisine" and "Vibe" are explicit category overrides (see store.ts's
+ * CROSS_CATEGORY_INTENTS) — "Coffee" or "Outdoors" swaps in a coffee shop or
+ * a park no matter what's scheduled here today, so a dinner or an activity
+ * block can freely become either.
+ */
+const SWAP_INTENT_GROUPS: { label: string; intents: SwapIntent[] }[] = [
+  { label: 'Adjust', intents: ['cheaper', 'pricier', 'surprise', 'indoor'] },
+  {
+    label: 'Cuisine',
+    intents: [
+      'italian',
+      'pizza',
+      'japanese',
+      'french',
+      'southern',
+      'greek',
+      'deli',
+      'mediterranean',
+      'peruvian',
+      'bakery',
+      'coffee',
+    ],
+  },
+  { label: 'Vibe', intents: ['rooftop', 'live-music', 'comedy', 'art', 'outdoors', 'film'] },
+];
+
 function priceLabel(tier?: PriceTier): string {
   return tier ? '$'.repeat(tier) : '';
+}
+
+/** "★ 4.6 (1.2k)" when a review score exists, else '' (curated seed has none). */
+function ratingText(rating?: number, count?: number): string {
+  if (rating == null) return '';
+  const c =
+    count != null
+      ? ` (${count >= 1000 ? `${(count / 1000).toFixed(1)}k` : count})`
+      : '';
+  return `★ ${rating.toFixed(1)}${c}`;
 }
 
 async function open(url: string): Promise<void> {
@@ -41,15 +108,6 @@ async function open(url: string): Promise<void> {
   } catch (err) {
     console.warn('[link] failed to open url:', err);
   }
-}
-
-function mapsUrl(item: PlanItem): string | null {
-  const label = encodeURIComponent(item.title);
-  if (item.lat != null && item.lng != null) {
-    return `https://maps.apple.com/?q=${label}&ll=${item.lat},${item.lng}`;
-  }
-  if (item.address) return `https://maps.apple.com/?q=${encodeURIComponent(item.address)}`;
-  return null;
 }
 
 const PRESETS: { label: string; start: string; end: string }[] = [
@@ -70,6 +128,7 @@ export function DayPanel({ date, onClose }: { date: string; onClose: () => void 
   const dayPrefs = useStore((s) => s.dayPrefsByDate[date]);
   const reshuffleDay = useStore((s) => s.reshuffleDay);
   const setAvailability = useStore((s) => s.setAvailability);
+  const clearDay = useStore((s) => s.clearDay);
   const holiday = holidayFor(date);
 
   const [busy, setBusy] = useState(false);
@@ -77,6 +136,9 @@ export function DayPanel({ date, onClose }: { date: string; onClose: () => void 
 
   if (!profile) return null;
   const prefs = resolvePrefs(profile, dayPrefs);
+  // A real day override carries more than just its `date` key (a cleared one is
+  // just `{date}`), so the day is clearable even with no free time yet.
+  const hasDayPrefs = !!dayPrefs && Object.keys(dayPrefs).length > 1;
 
   async function onReshuffle() {
     setBusy(true);
@@ -85,6 +147,18 @@ export function DayPanel({ date, onClose }: { date: string; onClose: () => void 
     } finally {
       setBusy(false);
     }
+  }
+
+  function onClearDay() {
+    confirmDestructive(
+      'Clear this day?',
+      `Removes the free time, plan, and neighborhood picks for ${weekdayLabel(date)}. Your bucket list is kept.`,
+      'Clear day',
+      () => {
+        clearDay(date);
+        onClose();
+      },
+    );
   }
 
   return (
@@ -129,6 +203,8 @@ export function DayPanel({ date, onClose }: { date: string; onClose: () => void 
       {/* Per-day preferences */}
       <Pressable
         accessibilityRole="button"
+        accessibilityHint="Shows neighborhoods, price, and party size for this day. Double tap to edit."
+        accessibilityState={{ expanded: prefsOpen }}
         onPress={() => setPrefsOpen((o) => !o)}
         style={styles.prefsToggle}
       >
@@ -182,6 +258,18 @@ export function DayPanel({ date, onClose }: { date: string; onClose: () => void 
       ) : (
         windows.map((w) => <WindowItinerary key={`${w.start}-${w.end}`} date={date} window={w} />)
       )}
+
+      {windows.length > 0 || hasDayPrefs ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Clear this day"
+          onPress={onClearDay}
+          hitSlop={6}
+          style={styles.clearDayBtn}
+        >
+          <Text style={styles.clearDayText}>Clear this day</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -245,15 +333,17 @@ function DayPrefsEditor({ date }: { date: string }) {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Smaller party"
+            hitSlop={{ top: 9, bottom: 9, left: 9, right: 9 }}
             onPress={() => void setDayPrefs(date, { partySize: Math.max(1, prefs.partySize - 1) })}
             style={styles.stepBtn}
           >
-            <Text style={styles.stepText}>-</Text>
+            <Text style={styles.stepText}>−</Text>
           </Pressable>
           <Text style={styles.stepValue}>party of {prefs.partySize}</Text>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Larger party"
+            hitSlop={{ top: 9, bottom: 9, left: 9, right: 9 }}
             onPress={() => void setDayPrefs(date, { partySize: Math.min(20, prefs.partySize + 1) })}
             style={styles.stepBtn}
           >
@@ -308,7 +398,7 @@ function WindowItinerary({ date, window: w }: { date: string; window: TimeWindow
     );
   }
 
-  if (!plan || stops.length === 0) {
+  if (!plan) {
     return (
       <View style={styles.windowBox}>
         <Text style={styles.windowLabel}>
@@ -321,6 +411,24 @@ function WindowItinerary({ date, window: w }: { date: string; window: TimeWindow
         >
           <Text style={styles.planBtnText}>Plan this window</Text>
         </Pressable>
+      </View>
+    );
+  }
+
+  if (stops.length === 0) {
+    // A committed-but-empty plan means the week's catalog is exhausted for
+    // this window (repeats are never served). Re-planning with the same
+    // inputs is a deterministic no-op, so say so instead of offering it.
+    return (
+      <View style={styles.windowBox}>
+        <Text style={styles.windowLabel}>
+          {format12h(w.start)} to {format12h(w.end)}
+        </Text>
+        <Text style={styles.emptyText}>
+          Nothing new fit this window this week — you&apos;ve seen everything that
+          matches. Try a longer window, a wider price range, or different
+          neighborhoods for this day.
+        </Text>
       </View>
     );
   }
@@ -353,22 +461,42 @@ function StopRow({
 
   const [swapping, setSwapping] = useState(false);
   const [swapMsg, setSwapMsg] = useState<string | null>(null);
+  const [swapMenuOpen, setSwapMenuOpen] = useState(false);
   const [altsOpen, setAltsOpen] = useState(false);
   const [alts, setAlts] = useState<Candidate[] | null>(null);
 
   const directions = mapsUrl(item);
+  const label = stopLabel(item.kind, item.startTime, item.tags);
 
-  async function onSwap(replacementId?: string) {
+  async function onSwap(replacementId?: string, intent?: SwapIntent) {
     setSwapping(true);
     setSwapMsg(null);
     try {
-      const ok = await swapPlanItem(date, w, item.id, replacementId);
+      const ok = await swapPlanItem(date, w, item.id, replacementId, intent);
       if (ok) {
+        setSwapMenuOpen(false);
         setAltsOpen(false);
         setAlts(null);
+      } else if (replacementId) {
+        // The tapped option was consumed elsewhere this week (or fell out of
+        // the fresh ranking) — refresh the list instead of blaming the prefs.
+        const list = await alternativesForItem(date, w, item.id);
+        setAlts(list);
+        setSwapMsg(
+          list.length > 0
+            ? 'That option was just used elsewhere this week — pick from the refreshed list.'
+            : "Nothing new nearby fits this slot this week. Widen this day's neighborhoods or price to see more.",
+        );
       } else {
-        // Be honest instead of silently doing nothing.
-        setSwapMsg('Nothing new fits this slot right now. Try a reshuffle instead.');
+        // Be honest instead of silently doing nothing. Repeats are never
+        // served, so an empty result means the week's catalog is used up here.
+        setSwapMsg(
+          intent && intent !== 'surprise'
+            ? CROSS_CATEGORY_INTENTS.has(intent)
+              ? `Nothing ${INTENT_LABEL[intent].toLowerCase()} fits this slot anywhere this week — every venue type was checked.`
+              : `Nothing ${INTENT_LABEL[intent].toLowerCase()} nearby fits this slot this week.`
+            : "Nothing new nearby fits this slot this week. Widen this day's neighborhoods or price to see more.",
+        );
       }
     } finally {
       setSwapping(false);
@@ -396,8 +524,9 @@ function StopRow({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Swap ${item.title}`}
+          accessibilityState={{ expanded: swapMenuOpen }}
           disabled={swapping}
-          onPress={() => void onSwap()}
+          onPress={() => setSwapMenuOpen((o) => !o)}
           hitSlop={6}
           style={styles.swapBtn}
         >
@@ -410,9 +539,38 @@ function StopRow({
         </Pressable>
       </View>
 
+      {swapMenuOpen ? (
+        <View style={styles.swapMenuGroups}>
+          {SWAP_INTENT_GROUPS.map((group) => (
+            <View key={group.label}>
+              <Text style={styles.swapGroupLabel}>{group.label}</Text>
+              <View style={styles.swapMenu}>
+                {group.intents.map((intent) => (
+                  <Pressable
+                    key={intent}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Swap for something ${INTENT_LABEL[intent].toLowerCase()}`}
+                    disabled={swapping}
+                    onPress={() => void onSwap(undefined, intent)}
+                    style={[styles.swapChip, swapping && { opacity: 0.5 }]}
+                  >
+                    <Text style={styles.swapChipText}>{INTENT_LABEL[intent]}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      <Text style={[styles.stopKind, { color: kindColor(item.kind) }]}>
+        {label.toUpperCase()}
+      </Text>
       <Text style={styles.stopTitle}>{item.title}</Text>
       <Text style={styles.stopMeta}>
-        {[item.neighborhood, priceLabel(item.priceTier)].filter(Boolean).join('  ·  ')}
+        {[item.neighborhood, priceLabel(item.priceTier), ratingText(item.rating, item.ratingCount)]
+          .filter(Boolean)
+          .join('  ·  ')}
       </Text>
       {item.description ? <Text style={styles.stopDesc}>{item.description}</Text> : null}
       {item.note ? <Text style={styles.stopWhy}>{item.note}</Text> : null}
@@ -433,18 +591,24 @@ function StopRow({
         ) : (
           <Text style={styles.noSite}>No website listed</Text>
         )}
-        {directions ? (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => void open(directions)}
-            style={styles.linkBtn}
-          >
-            <Text style={styles.linkBtnText}>Directions</Text>
-          </Pressable>
-        ) : null}
-        <Pressable accessibilityRole="button" onPress={() => void onToggleAlts()} style={styles.linkBtn}>
+        {/* mapsUrl always resolves (falls back to a name+area search), so every
+            stop gets Directions — including user-typed bucket wishes. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Directions to ${item.title}`}
+          onPress={() => void open(directions)}
+          style={styles.linkBtn}
+        >
+          <Text style={styles.linkBtnText}>Directions</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: altsOpen }}
+          onPress={() => void onToggleAlts()}
+          style={styles.linkBtn}
+        >
           <Text style={styles.linkBtnText}>
-            {altsOpen ? 'Hide options' : 'See what else is on'}
+            {altsOpen ? 'Hide options' : 'Other options'}
           </Text>
         </Pressable>
       </View>
@@ -454,7 +618,10 @@ function StopRow({
           {alts === null ? (
             <ActivityIndicator size="small" color={colors.accent} />
           ) : alts.length === 0 ? (
-            <Text style={styles.noSite}>Nothing else fits this slot right now.</Text>
+            <Text style={styles.noSite}>
+              Nothing new nearby fits this slot this week — you&apos;ve seen everything
+              that matches. Widen this day&apos;s neighborhoods or price to see more.
+            </Text>
           ) : (
             alts.map((c) => (
               <Pressable
@@ -467,7 +634,9 @@ function StopRow({
                 <View style={{ flex: 1 }}>
                   <Text style={styles.altName}>{c.name}</Text>
                   <Text style={styles.altMeta}>
-                    {[c.neighborhood, priceLabel(c.priceTier)].filter(Boolean).join('  ·  ')}
+                    {[c.neighborhood, priceLabel(c.priceTier), ratingText(c.rating, c.ratingCount)]
+                      .filter(Boolean)
+                      .join('  ·  ')}
                   </Text>
                 </View>
                 <Text style={styles.altUse}>Use</Text>
@@ -595,6 +764,31 @@ const styles = StyleSheet.create({
   stopTime: { color: colors.textMuted, fontSize: font.size.xs, letterSpacing: 0.3 },
   swapBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, padding: 2 },
   swapText: { color: colors.textMuted, fontSize: font.size.xs, fontWeight: font.weight.medium },
+  swapMenuGroups: { gap: 8, marginTop: 2 },
+  swapGroupLabel: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: font.weight.bold,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  swapMenu: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  swapChip: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+  },
+  swapChipText: { color: colors.text, fontSize: font.size.xs, fontWeight: font.weight.medium },
+  stopKind: {
+    fontSize: 10,
+    fontWeight: font.weight.bold,
+    letterSpacing: 1.2,
+    marginTop: 2,
+  },
   stopTitle: {
     color: colors.text,
     fontFamily: font.family.heading,
@@ -626,4 +820,10 @@ const styles = StyleSheet.create({
   altName: { color: colors.text, fontSize: font.size.sm, fontWeight: font.weight.medium },
   altMeta: { color: colors.textFaint, fontSize: font.size.xs },
   altUse: { color: colors.accent, fontSize: font.size.xs, fontWeight: font.weight.semibold },
+  clearDayBtn: {
+    alignSelf: 'flex-start',
+    paddingVertical: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  clearDayText: { color: colors.danger, fontSize: font.size.sm, fontWeight: font.weight.medium },
 });

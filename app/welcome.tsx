@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Skyline } from '../components/Skyline';
 import { Button } from '../components/ui';
 import { useStore } from '../lib/store';
-import { colors, font, spacing } from '../lib/theme';
+import { colors, font, sky, spacing } from '../lib/theme';
 
 export default function Welcome() {
   const router = useRouter();
@@ -23,7 +23,10 @@ export default function Welcome() {
   function enter() {
     // Straight into the calendar. No setup gate; preferences live per day.
     void markEntered();
-    router.replace('/week');
+    // Reached from inside the app (the header home button)? Pop back to exactly
+    // where the user was. On first launch there's nothing behind us, so replace.
+    if (router.canGoBack()) router.back();
+    else router.replace('/week');
   }
 
   return (
@@ -42,12 +45,12 @@ export default function Welcome() {
 
         <View style={styles.bottom}>
           <Text style={styles.wordmark}>OutNYC</Text>
-          <Text style={styles.tagline}>Your night out, planned.</Text>
+          <Text style={styles.tagline}>Your day out, planned.</Text>
           <Text style={styles.blurb}>
             Mark when you are free and get a walkable plan for every day of your
             week: events, restaurants, and your own bucket list, in order.
           </Text>
-          <Button label="Start planning →" onPress={enter} style={styles.cta} />
+          <Button label="Start planning" onPress={enter} style={styles.cta} />
         </View>
       </View>
     </View>
@@ -55,7 +58,7 @@ export default function Welcome() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#20182a' },
+  container: { flex: 1, backgroundColor: sky.evening.building },
   content: {
     flex: 1,
     paddingHorizontal: spacing.xl,

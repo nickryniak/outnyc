@@ -2,7 +2,8 @@
 // OutNYC — plan a day (app/plan/[date].tsx)
 // =============================================================================
 // A printed-guide layout: each free-time window gets a "sunset over Manhattan"
-// skyline hero, a numbered itinerary, reshuffle modifiers, and lock-in.
+// skyline hero, a numbered itinerary, and lock-in. Reshuffle and swap live on
+// the calendar screen, not here.
 // =============================================================================
 
 import { LinearGradient } from 'expo-linear-gradient';
@@ -92,7 +93,7 @@ function WindowPlan({ date, window }: { date: string; window: TimeWindow }) {
     if (res.reason === 'ok') {
       setLockMsg(`Locked in. ${res.scheduled} reminder${res.scheduled === 1 ? '' : 's'} set.`);
     } else if (res.reason === 'permission-denied') {
-      setLockMsg('Notifications are off. Enable them in iOS Settings to get nudges.');
+      setLockMsg('Notifications are off. Turn them on in your phone settings to get nudges.');
     } else {
       setLockMsg('Nothing to remind you about. Every stop starts too soon or has passed.');
     }
@@ -121,7 +122,7 @@ function WindowPlan({ date, window }: { date: string; window: TimeWindow }) {
 
       {isPlanning ? (
         <View style={styles.loadingBox}>
-          <LoadingView label="Packing your night…" />
+          <LoadingView label="Packing your day…" />
         </View>
       ) : planning?.status === 'error' ? (
         <ErrorView
@@ -152,7 +153,7 @@ function WindowPlan({ date, window }: { date: string; window: TimeWindow }) {
           </Caption>
           {plan.items.length > 0 ? (
             <Button
-              label={locked ? 'Locked in. Tap to re-lock' : 'Lock in and remind me'}
+              label={locked ? 'Reschedule reminders' : 'Lock in and remind me'}
               variant={locked ? 'secondary' : 'primary'}
               disabled={isPlanning}
               onPress={() => void onLock(plan.id)}
@@ -235,10 +236,5 @@ const styles = StyleSheet.create({
   },
   controls: {
     gap: spacing.md,
-  },
-  modifiers: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
   },
 });

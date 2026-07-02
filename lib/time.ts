@@ -238,13 +238,40 @@ export function format12h(hhmm: string): string {
 }
 
 /**
- * Build a JS Date for a NY-local (date, 'HH:MM') instant. Used to compute
- * notification trigger times. We construct the wall-clock components and let
- * the host interpret them; for notifications scheduled on-device this matches
- * the user's local clock (the app's audience is NYC-local).
+ * Build a JS Date for a NY-local (date, 'HH:MM') wall-clock instant — the TRUE
+ * America/New_York moment, regardless of the device's own timezone. Used to
+ * compute notification trigger times. On a device already set to NY this yields
+ * exactly the same instant as before (DST included); on a UTC emulator, CI, or a
+ * traveling user it no longer fires hours off.
  */
 export function nyDateTimeToLocalDate(ymd: string, hhmm: string): Date {
   const [y, mo, d] = ymd.split('-').map((n) => parseInt(n, 10));
   const [h, mi] = hhmm.split(':').map((n) => parseInt(n, 10));
-  return new Date(y, mo - 1, d, h, mi, 0, 0);
+  // Treat the wall-clock components as if they were UTC, then correct by the
+  // America/New_York offset at that instant so the Date is the true NY moment.
+  const asUTC = Date.UTC(y, mo - 1, d, h, mi, 0, 0);
+  return new Date(asUTC - nyOffsetMsAt(asUTC));
+}
+
+/**
+ * The America/New_York UTC offset (ms; e.g. -4h in EDT, -5h in EST) at the given
+ * instant, derived via Intl so DST is handled without a hardcoded table.
+ */
+function nyOffsetMsAt(instant: number): number {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const parts = dtf.formatToParts(new Date(instant));
+  const get = (t: string) => parseInt(parts.find((p) => p.type === t)!.value, 10);
+  let hour = get('hour');
+  if (hour === 24) hour = 0; // some engines emit '24' for midnight
+  const asIfUTC = Date.UTC(get('year'), get('month') - 1, get('day'), hour, get('minute'), get('second'));
+  return asIfUTC - instant;
 }
