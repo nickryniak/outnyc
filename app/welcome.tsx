@@ -50,9 +50,11 @@ export default function Welcome() {
             Mark when you are free and get a walkable plan for every day of your
             week: events, restaurants, and your own bucket list, in order.
           </Text>
-          {/* Revisited from inside the app, the CTA pops back — say so. */}
+          {/* Revisited from inside the app, the CTA pops back to WHEREVER
+              pushed it (week header or Settings' "View intro"), so the label
+              must not promise a specific destination. */}
           <Button
-            label={router.canGoBack() ? 'Back to your week' : 'Start planning'}
+            label={router.canGoBack() ? 'Done' : 'Start planning'}
             onPress={enter}
             style={styles.cta}
           />

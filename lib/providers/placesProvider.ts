@@ -44,12 +44,16 @@ const FIELD_MASK = [
 ].join(',');
 
 // Google Places "type" -> a plain cuisine label for the Italian/Coffee/etc.
-// swap-intent chips. Checked in a fixed priority order (first match wins).
+// swap-intent chips. Checked in a fixed priority order (first match wins), so
+// SPECIFIC types must precede the generic type they nearly always ride along
+// with: real sushi places carry sushi_restaurant AND japanese_restaurant (and
+// pizza places pizza_restaurant AND italian_restaurant) — generic-first would
+// collapse them all to the generic label and starve the specific chips.
 const CUISINE_TYPES: [string, string][] = [
-  ['italian_restaurant', 'Italian'],
   ['pizza_restaurant', 'Pizza'],
-  ['japanese_restaurant', 'Japanese'],
+  ['italian_restaurant', 'Italian'],
   ['sushi_restaurant', 'Sushi'],
+  ['japanese_restaurant', 'Japanese'],
   ['ramen_restaurant', 'Japanese'],
   ['chinese_restaurant', 'Chinese'],
   ['korean_restaurant', 'Korean'],

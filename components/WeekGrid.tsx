@@ -397,9 +397,15 @@ const NeighborhoodModal = memo(function NeighborhoodModal({
   const clearDayPrefs = useStore((s) => s.clearDayPrefs);
   // The modal instance is never unmounted (only `date` toggles), so scope the
   // warning to the day it was raised on — opening the picker on a different
-  // day never shows a stale "pick at least one" from a prior day.
+  // day never shows a stale "pick at least one" from a prior day. Closing
+  // also clears it, so reopening the picker for the SAME day starts clean
+  // instead of resurrecting a warning from the previous visit.
   const [warnDate, setWarnDate] = useState<string | null>(null);
   const emptyWarn = warnDate !== null && warnDate === date;
+  function close() {
+    setWarnDate(null);
+    onClose();
+  }
 
   if (!date || !profile) return null;
   const selected = resolvePrefs(profile, dayPrefs).neighborhoods;
@@ -418,13 +424,13 @@ const NeighborhoodModal = memo(function NeighborhoodModal({
   }
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible transparent animationType="fade" onRequestClose={close}>
       {/* No accessibilityRole here: the scrim wraps real interactive buttons
           (chips, Done), and react-native-web renders role="button" as an
           actual <button> — nesting one inside another is invalid HTML and
           breaks hydration. Tap-to-dismiss still works via onPress alone;
           "Done" below is the clear, accessible way to close for AT users. */}
-      <Pressable style={styles.modalScrim} onPress={onClose}>
+      <Pressable style={styles.modalScrim} onPress={close}>
         <Pressable accessibilityViewIsModal style={styles.modalCard} onPress={() => {}}>
           <Text style={styles.modalEyebrow}>NEIGHBORHOODS</Text>
           <Text style={styles.modalTitle}>
@@ -458,7 +464,7 @@ const NeighborhoodModal = memo(function NeighborhoodModal({
             >
               <Text style={styles.modalGhostText}>Use my usual</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" onPress={onClose} style={styles.modalDone}>
+            <Pressable accessibilityRole="button" onPress={close} style={styles.modalDone}>
               <Text style={styles.modalDoneText}>Done</Text>
             </Pressable>
           </View>
@@ -765,7 +771,11 @@ export function WeekGrid({
               {selectedDate === d
                 ? windows.map((w, i) => (
                     <FreeBlockEditor
-                      key={`${w.start}-${w.end}`}
+                      // Keyed by ARRAY POSITION, not start/end: the index is
+                      // already the commit identity, and a start/end key would
+                      // remount the editor on every resize — dumping VoiceOver
+                      // focus off the adjustable handle after each increment.
+                      key={i}
                       date={d}
                       index={i}
                       window={w}

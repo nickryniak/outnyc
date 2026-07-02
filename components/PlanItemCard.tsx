@@ -70,9 +70,10 @@ export function PlanItemCard({ item, stopNumber }: { item: PlanItem; stopNumber?
           </Text>
         </View>
 
-        <Text style={styles.title} numberOfLines={2} ellipsizeMode="tail">
-          {item.title}
-        </Text>
+        {/* Never clamped: this full-view card is the one surface where a long
+            event title (openers, venue, night) must be readable end to end —
+            the grid block and day-panel rows truncate and point here. */}
+        <Text style={styles.title}>{item.title}</Text>
 
         {/* Provenance for bucket stops is the FROM YOUR LIST kind label above —
             no duplicate "from your list" suffix here. */}

@@ -347,12 +347,23 @@ export class HeuristicPlanner implements Planner {
       };
       pools = buildPools(widened, true);
       // Each pool independently: a combined count would let events alone hide
-      // an empty places pool, silently starving the meal anchors below.
+      // an empty places pool, silently starving the meal anchors below. The
+      // full widening is ALSO per pool — only the pool that is itself still
+      // starved takes the full-range rebuild. The events pool is routinely
+      // empty for non-price reasons (one neighborhood, its only in-area event
+      // already retired this week), and blowing the price filter open for a
+      // healthy places pool would let a $$$$ steakhouse take a $-budget day's
+      // meal anchor.
       if (
         pools.places.length < MIN_PLACES_POOL - 1 ||
         pools.events.length < MIN_EVENTS_POOL - 1
       ) {
-        pools = buildPools(FULL_PRICE_RANGE, true);
+        const full = buildPools(FULL_PRICE_RANGE, true);
+        pools = {
+          buckets: full.buckets,
+          events: pools.events.length < MIN_EVENTS_POOL - 1 ? full.events : pools.events,
+          places: pools.places.length < MIN_PLACES_POOL - 1 ? full.places : pools.places,
+        };
       }
     }
 

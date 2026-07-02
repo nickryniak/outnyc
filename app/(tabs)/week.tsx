@@ -9,7 +9,6 @@
 
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Home } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -107,15 +106,18 @@ export default function WeekScreen() {
           style={StyleSheet.absoluteFill}
         />
         <View style={[styles.headerText, { top: insets.top + 4 }]}>
+          {/* This screen IS home; the wordmark button opens the intro. No Home
+              icon or "HOME" text — that promised staying put — and the
+              accessible name starts with the visible text so Voice Control's
+              "Tap OutNYC" resolves (WCAG 2.5.3 label-in-name). */}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="View the intro screen"
+            accessibilityLabel="OutNYC. View the intro screen"
             onPress={() => router.push('/welcome')}
             hitSlop={10}
             style={styles.brandRow}
           >
-            <Home size={12} color={colors.onArtMuted} strokeWidth={2.4} />
-            <Text style={styles.headerEyebrow}>OUTNYC · HOME</Text>
+            <Text style={styles.headerEyebrow}>OUTNYC</Text>
           </Pressable>
           <View style={styles.headerRow}>
             <Text style={styles.headerTitle}>{weekRangeLabel(monday)}</Text>

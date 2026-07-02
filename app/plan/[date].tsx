@@ -92,7 +92,14 @@ function WindowPlan({ date, window }: { date: string; window: TimeWindow }) {
   async function onLock(planId: string) {
     const res = await lockInPlan(planId);
     if (res.reason === 'ok') {
-      setLockMsg(`Locked in. ${res.scheduled} reminder${res.scheduled === 1 ? '' : 's'} set.`);
+      // Honest about BOTH counts: a stop starting inside the ~20-minute lead
+      // window gets no nudge, and silently omitting that reads as "all set".
+      const base = `Locked in. ${res.scheduled} reminder${res.scheduled === 1 ? '' : 's'} set.`;
+      setLockMsg(
+        res.skipped > 0
+          ? `${base} ${res.skipped} stop${res.skipped === 1 ? ' starts' : 's start'} too soon to remind.`
+          : base,
+      );
     } else if (res.reason === 'permission-denied') {
       setLockMsg('Notifications are off. Turn them on in your phone settings to get nudges.');
     } else {

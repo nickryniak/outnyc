@@ -21,6 +21,7 @@ import {
   View,
 } from 'react-native';
 
+import { providerFlags } from '../lib/config';
 import { confirmDestructive } from '../lib/confirm';
 import { INTEREST_TAGS, NEIGHBORHOODS, PRICE_TIERS } from '../lib/constants';
 import { priceLabel, ratingText } from '../lib/format';
@@ -68,6 +69,25 @@ const INTENT_LABEL: Record<SwapIntent, string> = {
 };
 
 /**
+ * Cuisines only the live Google Places pipeline can ever label: the curated
+ * seed catalog contains no venue with these cuisines, so in zero-key mode the
+ * chips are structurally impossible to satisfy and are hidden rather than
+ * shown as permanently dead buttons with a false "everything was checked"
+ * failure message.
+ */
+const LIVE_ONLY_CUISINES = new Set<SwapIntent>([
+  'thai',
+  'chinese',
+  'korean',
+  'indian',
+  'mexican',
+  'sushi',
+  'seafood',
+  'steakhouse',
+  'vegan',
+]);
+
+/**
  * Every swap-intent chip, shown on EVERY stop regardless of its current kind,
  * grouped for legibility. "Adjust" stays within today's current stop kind;
  * "Cuisine" and "Vibe" are explicit category overrides (see store.ts's
@@ -75,7 +95,7 @@ const INTENT_LABEL: Record<SwapIntent, string> = {
  * a park no matter what's scheduled here today, so a dinner or an activity
  * block can freely become either.
  */
-const SWAP_INTENT_GROUPS: { label: string; intents: SwapIntent[] }[] = [
+const ALL_SWAP_INTENT_GROUPS: { label: string; intents: SwapIntent[] }[] = [
   { label: 'Adjust', intents: ['cheaper', 'pricier', 'surprise', 'indoor'] },
   {
     label: 'Cuisine',
@@ -104,6 +124,15 @@ const SWAP_INTENT_GROUPS: { label: string; intents: SwapIntent[] }[] = [
   },
   { label: 'Vibe', intents: ['rooftop', 'live-music', 'comedy', 'art', 'outdoors', 'film'] },
 ];
+
+/** The groups actually rendered: live-only cuisines drop out without a key. */
+const SWAP_INTENT_GROUPS: { label: string; intents: SwapIntent[] }[] =
+  providerFlags.places.isLive
+    ? ALL_SWAP_INTENT_GROUPS
+    : ALL_SWAP_INTENT_GROUPS.map((g) => ({
+        ...g,
+        intents: g.intents.filter((i) => !LIVE_ONLY_CUISINES.has(i)),
+      }));
 
 /** Which swap group opens by default, keyed off what's scheduled here now. */
 function defaultSwapGroup(kind: PlanItemKind): string {
@@ -137,6 +166,7 @@ export function DayPanel({ date, onClose }: { date: string; onClose: () => void 
   const availability = useStore((s) => s.availabilityByDate[date]);
   const windows = availability?.windows ?? [];
   const dayPrefs = useStore((s) => s.dayPrefsByDate[date]);
+  const eventsNote = useStore((s) => s.eventsNoteByDate[date]);
   const reshuffleDay = useStore((s) => s.reshuffleDay);
   const setAvailability = useStore((s) => s.setAvailability);
   const clearDay = useStore((s) => s.clearDay);
@@ -258,6 +288,16 @@ export function DayPanel({ date, onClose }: { date: string; onClose: () => void 
           <BellRing size={13} color={colors.accent} strokeWidth={2} />
           <Text style={styles.remindersLinkText}>Reminders and full view</Text>
         </Pressable>
+      ) : null}
+
+      {/* Live event feeds answered but had nothing in this day's areas —
+          honest provenance for the curated picks that filled in (distinct
+          from a live failure, which the provider reports as an error). */}
+      {windows.length > 0 && eventsNote === 'live-no-area-matches' ? (
+        <Text style={styles.providerNote}>
+          Live event listings had nothing in this day&apos;s neighborhoods, so
+          curated picks fill in.
+        </Text>
       ) : null}
 
       {/* Itineraries per window */}
@@ -815,6 +855,7 @@ const styles = StyleSheet.create({
   presetText: { color: colors.free, fontSize: font.size.sm, fontWeight: font.weight.semibold },
   remindersLink: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 },
   remindersLinkText: { color: colors.accent, fontSize: font.size.sm, fontWeight: font.weight.medium },
+  providerNote: { color: colors.textFaint, fontSize: font.size.xs, fontStyle: 'italic' },
 
   windowBox: { gap: spacing.sm, paddingTop: spacing.xs },
   windowLabel: {

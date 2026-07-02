@@ -23,7 +23,7 @@ import { Button, Caption, Eyebrow, Heading, LoadingView } from '../../components
 import { confirmDestructive } from '../../lib/confirm';
 import { useStore } from '../../lib/store';
 import { colors, font, radius, spacing } from '../../lib/theme';
-import { weekdayLabel } from '../../lib/time';
+import { monthDayLabel, todayNY, weekdayLabel } from '../../lib/time';
 import type { BucketItem } from '../../lib/types';
 
 // ---- Paste parsing ----------------------------------------------------------
@@ -88,11 +88,16 @@ export default function BucketScreen() {
     return { open: sorted.filter((b) => !b.done), done: sorted.filter((b) => b.done) };
   }, [bucketList]);
 
-  // Bucket item id -> earliest date it's scheduled on. Bucket-derived stops
-  // carry the item's id as `bucketItemId` (planner + swaps), so that's the link.
+  // Bucket item id -> earliest UPCOMING date it's scheduled on. Bucket-derived
+  // stops carry the item's id as `bucketItemId` (planner + swaps), so that's
+  // the link. Plans for past dates can survive in storage, so anything before
+  // today is ignored — a stale last-week placement must neither show as "on
+  // calendar" nor mask a genuinely upcoming one.
   const scheduledDateById = useMemo(() => {
+    const today = todayNY();
     const map: Record<string, string> = {};
     for (const p of Object.values(plansByKey)) {
+      if (p.date < today) continue;
       for (const it of p.items) {
         if (!it.bucketItemId) continue;
         const earliest = map[it.bucketItemId];
@@ -229,7 +234,9 @@ function BucketRow({
         {scheduledDate ? (
           <View style={styles.scheduledChip}>
             <Text style={styles.scheduledChipText}>
-              On calendar · {weekdayLabel(scheduledDate)}
+              {/* Weekday PLUS the date: a bare weekday reads as "this week"
+                  even when the plan is a week or more out. */}
+              On calendar · {weekdayLabel(scheduledDate)}, {monthDayLabel(scheduledDate)}
             </Text>
           </View>
         ) : null}

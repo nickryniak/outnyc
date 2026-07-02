@@ -103,6 +103,23 @@ describe('HeuristicPlanner', () => {
     expect(plan.items.some((i) => i.kind === 'restaurant')).toBe(true);
   });
 
+  it('keeps a healthy places pool inside the price band when only events are starved', async () => {
+    // The inverse of the widening case above: the events pool is empty for a
+    // NON-price reason (e.g. the area's only events already retired this
+    // week), which price widening can never fix. That must not blow the price
+    // filter fully open for the places pool — a $-budget day may widen at most
+    // one notch ($$) when its places pool is not itself starved.
+    const price = { min: 1 as const, max: 1 as const };
+    const plan = await heuristicPlanner.plan(
+      request({ start: '17:00', end: '22:00' }, { price, events: [], bucketList: [] }),
+    );
+    const stops = plan.items.filter((i) => i.kind !== 'walk' && i.kind !== 'break');
+    expect(stops.length).toBeGreaterThan(0);
+    for (const s of stops) {
+      if (s.priceTier != null) expect(s.priceTier).toBeLessThanOrEqual(2);
+    }
+  });
+
   it('produces distinct plans for distinct nonces (reshuffle variety hook)', async () => {
     const window: TimeWindow = { start: '09:00', end: '23:00' };
     const a = await heuristicPlanner.plan(request(window, { nonce: 0 }));

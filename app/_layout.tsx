@@ -50,13 +50,18 @@ export default function RootLayout() {
   const bootstrap = useStore((s) => s.bootstrap);
   const loadStatus = useStore((s) => s.loadStatus);
 
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Fraunces_400Regular,
     Fraunces_400Regular_Italic,
     Fraunces_600SemiBold,
     Fraunces_700Bold,
     Fraunces_900Black,
   });
+  // useFonts never flips `loaded` when the load FAILS (e.g. a flaky network in
+  // Expo Go) — it sets the error instead. Treat either as "done" so the splash
+  // always hides and the app proceeds on system-font fallbacks rather than
+  // sitting behind the native splash forever.
+  const fontsDone = fontsLoaded || fontError != null;
 
   useEffect(() => {
     void bootstrap();
@@ -64,10 +69,10 @@ export default function RootLayout() {
 
   const bootDone = loadStatus === 'ready' || loadStatus === 'error';
   useEffect(() => {
-    if (fontsLoaded && bootDone) void SplashScreen.hideAsync();
-  }, [fontsLoaded, bootDone]);
+    if (fontsDone && bootDone) void SplashScreen.hideAsync();
+  }, [fontsDone, bootDone]);
 
-  if (!fontsLoaded) {
+  if (!fontsDone) {
     // Hold on a cream canvas so we never flash a system-serif fallback.
     return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   }

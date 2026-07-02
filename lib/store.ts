@@ -188,6 +188,13 @@ interface StoreState {
   // ---- transient ----
   planning: Record<string, PlanningState>; // keyed like plansByKey
   lockedPlanIds: Record<string, boolean>; // planId -> notifications scheduled
+  /**
+   * Per-date note from the events provider's last fetch for that date:
+   * 'live-no-area-matches' means the ticketed live sources answered fine but
+   * had zero in-area events, so curated seed events were substituted — the UI
+   * shows this so "nothing nearby" is distinguishable from "live broken".
+   */
+  eventsNoteByDate: Record<string, 'live-no-area-matches'>;
 
   // ---- actions ----
   bootstrap(): Promise<void>;
@@ -398,6 +405,7 @@ export const useStore = create<StoreState>((set, get) => ({
   seenByDate: {},
   planning: {},
   lockedPlanIds: {},
+  eventsNoteByDate: {},
 
   async bootstrap() {
     if (get().loadStatus === 'loading' || get().loadStatus === 'ready') return;
@@ -438,6 +446,7 @@ export const useStore = create<StoreState>((set, get) => ({
       seenByDate: {},
       planning: {},
       lockedPlanIds: {},
+      eventsNoteByDate: {},
       loadStatus: 'loading',
       loadError: undefined,
     });
@@ -519,12 +528,17 @@ export const useStore = create<StoreState>((set, get) => ({
     // prefs, and wipe the day's never-repeat memory. The availability change is
     // inlined (not via setAvailability, which now enqueues its own work —
     // calling it from inside this queued task would deadlock the date's queue).
+    // The in-memory delete happens NOW, at call time — the same optimistic
+    // contract as setAvailability — so a later setAvailability (e.g. an "Add
+    // free time" preset tapped while this clear is still queued) is never
+    // clobbered at dequeue time, which would leave memory and disk divergent
+    // (ghost windows reappearing on restart).
+    set((s) => {
+      const next = { ...s.availabilityByDate };
+      delete next[date];
+      return { availabilityByDate: next };
+    });
     return enqueuePlan(date, async () => {
-      set((s) => {
-        const next = { ...s.availabilityByDate };
-        delete next[date];
-        return { availabilityByDate: next };
-      });
       await applyAvailability(set, get, { date, windows: [] });
       await get().clearDayPrefs(date);
       if (get().seenByDate[date]) {
@@ -633,97 +647,107 @@ export const useStore = create<StoreState>((set, get) => ({
     const pick = pickByIntent(options, item, replacementId, intent);
     if (!pick) return false;
 
-    // The provider fetch above awaited: re-validate that the target window
-    // still exists (the user may have removed/resized the block) and that the
-    // plan was not reshuffled away in the meantime, so we never resurrect a
-    // stale plan or commit into a window that is gone.
-    const windowStillExists = (get().availabilityByDate[date]?.windows ?? []).some(
-      (w) => planKey(date, w) === key,
-    );
-    const fresh = get().plansByKey[key];
-    if (
-      !windowStillExists ||
-      !fresh ||
-      fresh.id !== plan.id ||
-      !fresh.items.some((i) => i.id === itemId)
-    ) {
-      return false;
-    }
-
-    const slotStart = toMinutes(item.startTime);
-    const slotEnd = toMinutes(item.endTime);
-    // Fixed-time picks (a show with a real start) keep their true time, clamped
-    // to the slot; flexible picks start when the slot starts.
-    let newStart = slotStart;
-    let newEnd = slotStart + Math.min(candidateDuration(pick), slotEnd - slotStart);
-    if (pick.startTime && pick.endTime) {
-      const clampedStart = Math.max(slotStart, toMinutes(pick.startTime));
-      const clampedEnd = Math.min(slotEnd, toMinutes(pick.endTime));
-      // A candidate only had to cover slotStart+30 to qualify, so on a short
-      // (sub-30-min) slot its real start can land past slotEnd and invert the
-      // window. Only adopt the fixed times when they yield a positive duration;
-      // otherwise keep the flexible placement above (always positive).
-      if (clampedEnd > clampedStart) {
-        newStart = clampedStart;
-        newEnd = clampedEnd;
+    // Commit INSIDE the per-date plan queue: every other plan mutation
+    // (generate/reshuffle/clear) serializes through it, so a queued reshuffle
+    // can never land between our re-validation below and the commit — a swap
+    // that committed outside the queue could overwrite a freshly reshuffled
+    // plan with one built from a stale snapshot.
+    let committed = false;
+    await enqueuePlan(date, async () => {
+      // The provider fetch above awaited: re-validate that the target window
+      // still exists (the user may have removed/resized the block) and that the
+      // plan was not reshuffled away in the meantime, so we never resurrect a
+      // stale plan or commit into a window that is gone.
+      const windowStillExists = (get().availabilityByDate[date]?.windows ?? []).some(
+        (w) => planKey(date, w) === key,
+      );
+      const fresh = get().plansByKey[key];
+      if (
+        !windowStillExists ||
+        !fresh ||
+        fresh.id !== plan.id ||
+        !fresh.items.some((i) => i.id === itemId)
+      ) {
+        return;
       }
-    }
 
-    const replacement: PlanItem = {
-      id: pick.id,
-      order: item.order,
-      kind: pick.kind,
-      title: pick.name,
-      neighborhood: pick.neighborhood,
-      startTime: fromMinutes(newStart),
-      endTime: fromMinutes(newEnd),
-      priceTier: pick.priceTier,
-      lat: pick.lat,
-      lng: pick.lng,
-      address: pick.address,
-      bookingUrl: pick.bookingUrl,
-      rating: pick.rating,
-      ratingCount: pick.ratingCount,
-      description: pick.description,
-      note: 'Swapped in by you.',
-      tags: pick.tags,
-      cuisine: pick.cuisine,
-      sourceId: pick.kind === 'bucket' ? undefined : pick.id,
-      bucketItemId: pick.kind === 'bucket' ? pick.id : undefined,
-    };
-
-    // Retire BOTH sides into the day's never-repeat memory: the outgoing stop
-    // (so it never comes back) and the incoming pick (so a sibling window
-    // cannot serve the same venue again today). Venue keys alongside the raw
-    // ids so a same-place-different-id echo (bucket wish vs. curated listing)
-    // is caught too.
-    const outgoingId = item.sourceId ?? item.bucketItemId ?? item.id;
-    await addSeen(set, get, date, [
-      outgoingId,
-      venueKey(item.title),
-      pick.id,
-      venueKey(pick.name),
-    ]);
-
-    const stops = fresh.items
-      .filter((i) => i.kind !== 'walk' && i.kind !== 'break')
-      .map((i) => (i.id === itemId ? replacement : i));
-    const nextPlan: Plan = { ...fresh, items: rebuildConnectors(stops) };
-    set((s) => ({ plansByKey: { ...s.plansByKey, [key]: nextPlan } }));
-    await repository.savePlan(nextPlan);
-
-    // A locked-in plan has per-stop reminders with the old venue baked in.
-    // Re-issue them so the reminder matches the new stop; if nothing is left
-    // to remind about, drop the lock so the UI stays honest.
-    if (get().lockedPlanIds[nextPlan.id]) {
-      const { scheduled } = await schedulePlanNotifications(nextPlan);
-      if (scheduled === 0) {
-        const cleared = omit(get().lockedPlanIds, nextPlan.id);
-        set({ lockedPlanIds: cleared });
-        await persistLocked(cleared);
+      const slotStart = toMinutes(item.startTime);
+      const slotEnd = toMinutes(item.endTime);
+      // Fixed-time picks (a show with a real start) keep their true time, clamped
+      // to the slot; flexible picks start when the slot starts.
+      let newStart = slotStart;
+      let newEnd = slotStart + Math.min(candidateDuration(pick), slotEnd - slotStart);
+      if (pick.startTime && pick.endTime) {
+        const clampedStart = Math.max(slotStart, toMinutes(pick.startTime));
+        const clampedEnd = Math.min(slotEnd, toMinutes(pick.endTime));
+        // A candidate only had to cover slotStart+30 to qualify, so on a short
+        // (sub-30-min) slot its real start can land past slotEnd and invert the
+        // window. Only adopt the fixed times when they yield a positive duration;
+        // otherwise keep the flexible placement above (always positive).
+        if (clampedEnd > clampedStart) {
+          newStart = clampedStart;
+          newEnd = clampedEnd;
+        }
       }
-    }
-    return true;
+
+      const replacement: PlanItem = {
+        id: pick.id,
+        order: item.order,
+        kind: pick.kind,
+        title: pick.name,
+        neighborhood: pick.neighborhood,
+        startTime: fromMinutes(newStart),
+        endTime: fromMinutes(newEnd),
+        priceTier: pick.priceTier,
+        lat: pick.lat,
+        lng: pick.lng,
+        address: pick.address,
+        bookingUrl: pick.bookingUrl,
+        rating: pick.rating,
+        ratingCount: pick.ratingCount,
+        description: pick.description,
+        note: 'Swapped in by you.',
+        tags: pick.tags,
+        cuisine: pick.cuisine,
+        sourceId: pick.kind === 'bucket' ? undefined : pick.id,
+        bucketItemId: pick.kind === 'bucket' ? pick.id : undefined,
+      };
+
+      // Retire BOTH sides into the day's never-repeat memory: the outgoing stop
+      // (so it never comes back) and the incoming pick (so a sibling window
+      // cannot serve the same venue again today). Venue keys alongside the raw
+      // ids so a same-place-different-id echo (bucket wish vs. curated listing)
+      // is caught too. Safe to await before the commit: this whole closure runs
+      // inside the date's plan queue, so no other plan mutation can interleave.
+      const outgoingId = item.sourceId ?? item.bucketItemId ?? item.id;
+      await addSeen(set, get, date, [
+        outgoingId,
+        venueKey(item.title),
+        pick.id,
+        venueKey(pick.name),
+      ]);
+
+      const stops = fresh.items
+        .filter((i) => i.kind !== 'walk' && i.kind !== 'break')
+        .map((i) => (i.id === itemId ? replacement : i));
+      const nextPlan: Plan = { ...fresh, items: rebuildConnectors(stops) };
+      set((s) => ({ plansByKey: { ...s.plansByKey, [key]: nextPlan } }));
+      await repository.savePlan(nextPlan);
+
+      // A locked-in plan has per-stop reminders with the old venue baked in.
+      // Re-issue them so the reminder matches the new stop; if nothing is left
+      // to remind about, drop the lock so the UI stays honest.
+      if (get().lockedPlanIds[nextPlan.id]) {
+        const { scheduled } = await schedulePlanNotifications(nextPlan);
+        if (scheduled === 0) {
+          const cleared = omit(get().lockedPlanIds, nextPlan.id);
+          set({ lockedPlanIds: cleared });
+          await persistLocked(cleared);
+        }
+      }
+      committed = true;
+    });
+    return committed;
   },
 
   async alternativesForItem(date, window, itemId) {
@@ -1052,6 +1076,18 @@ async function runPlan(
       eventsProvider.fetchEvents(date),
       placesProvider.fetchPlaces(prefs.neighborhoods),
     ]);
+
+    // Record (or clear) the provider's "live answered, nothing in-area" note
+    // so the day panel can say curated picks substituted — distinguishing
+    // that from a live failure instead of rendering the two identically.
+    set((s) => {
+      if (eventsRes.note) {
+        return { eventsNoteByDate: { ...s.eventsNoteByDate, [date]: eventsRes.note } };
+      }
+      return s.eventsNoteByDate[date]
+        ? { eventsNoteByDate: omit(s.eventsNoteByDate, date) }
+        : {};
+    });
 
     const plan = await defaultPlanner.plan({
       date,
