@@ -19,7 +19,11 @@ import type {
 } from '../types';
 import type { Repository } from './repository';
 
+/** Bump when a stored shape changes; add the upgrade step in migrate(). */
+const SCHEMA_VERSION = 1;
+
 const KEYS = {
+  schemaVersion: `${STORAGE_PREFIX}schemaVersion`,
   profile: `${STORAGE_PREFIX}profile`,
   availability: `${STORAGE_PREFIX}availability`, // map: date -> Availability
   bucketList: `${STORAGE_PREFIX}bucketList`,
@@ -67,6 +71,35 @@ function planKey(date: string, windowStart: string, windowEnd: string): string {
 
 export class AsyncStorageRepository implements Repository {
   readonly name = 'AsyncStorage';
+
+  constructor() {
+    // Runs on the write chain so any future migration lands before the first
+    // serialized mutation. The chain swallows rejections, so this can't leak
+    // an unhandled promise.
+    void serialized(() => this.ensureSchemaVersion());
+  }
+
+  private async ensureSchemaVersion(): Promise<void> {
+    const stored = await readJSON<number | null>(KEYS.schemaVersion, null);
+    // Missing key means fresh install or pre-versioning data — both are the
+    // version-1 shape, so there is nothing to migrate from.
+    const from = stored ?? SCHEMA_VERSION;
+    if (from !== SCHEMA_VERSION) {
+      await this.migrate(from);
+    }
+    if (stored !== SCHEMA_VERSION) {
+      await writeJSON(KEYS.schemaVersion, SCHEMA_VERSION);
+    }
+  }
+
+  /** Upgrade stored data from an older schema. No-op today (only v1 exists). */
+  private async migrate(fromVersion: number): Promise<void> {
+    switch (fromVersion) {
+      // case 1: reshape v1 -> v2 here, then fall through to later steps.
+      default:
+        break;
+    }
+  }
 
   async getProfile(): Promise<Profile | null> {
     return readJSON<Profile | null>(KEYS.profile, null);
@@ -138,7 +171,9 @@ export class AsyncStorageRepository implements Repository {
   }
 
   async saveLockedPlanIds(ids: string[]): Promise<void> {
-    await writeJSON(KEYS.locked, ids);
+    // Whole-value write, but serialized so it can't interleave with other
+    // writes on the chain (callers read-modify-write this list).
+    await serialized(() => writeJSON(KEYS.locked, ids));
   }
 
   async getAllDayPrefs(): Promise<DayPrefs[]> {
@@ -159,7 +194,9 @@ export class AsyncStorageRepository implements Repository {
   }
 
   async saveSeenMap(map: Record<string, string[]>): Promise<void> {
-    await writeJSON(KEYS.seen, map);
+    // Whole-value write, but serialized so it can't interleave with other
+    // writes on the chain (callers read-modify-write this map).
+    await serialized(() => writeJSON(KEYS.seen, map));
   }
 
   async savePlan(plan: Plan): Promise<void> {

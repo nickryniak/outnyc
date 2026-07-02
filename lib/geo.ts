@@ -9,10 +9,11 @@
 // as location-agnostic and would always pass).
 // =============================================================================
 
-import { NEIGHBORHOODS } from './constants';
+import { NEIGHBORHOODS, type Neighborhood } from './constants';
 
-/** Approximate centroid of each supported neighborhood. */
-export const NEIGHBORHOOD_CENTERS: Record<string, { lat: number; lng: number }> = {
+// `satisfies` makes a missing or misspelled neighborhood a compile error; the
+// export stays string-indexable because providers look up free-text names.
+const CENTERS = {
   'West Village': { lat: 40.7336, lng: -74.0027 },
   'East Village': { lat: 40.7265, lng: -73.9815 },
   'Lower East Side': { lat: 40.715, lng: -73.9843 },
@@ -25,7 +26,10 @@ export const NEIGHBORHOOD_CENTERS: Record<string, { lat: number; lng: number }> 
   Harlem: { lat: 40.8116, lng: -73.9465 },
   Astoria: { lat: 40.7644, lng: -73.9235 },
   Bushwick: { lat: 40.6944, lng: -73.9213 },
-};
+} satisfies Record<Neighborhood, { lat: number; lng: number }>;
+
+/** Approximate centroid of each supported neighborhood. */
+export const NEIGHBORHOOD_CENTERS: Record<string, { lat: number; lng: number }> = CENTERS;
 
 /** Label for live venues that sit outside every supported neighborhood. */
 export const OUTSIDE_AREA_LABEL = 'Elsewhere in NYC';

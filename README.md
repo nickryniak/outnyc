@@ -9,11 +9,12 @@ you actually go.
 Built with **Expo (React Native) + TypeScript**. Runs in **Expo Go** on your
 iPhone with **no native build step**.
 
-> **Status:** v1 runs entirely on **mock/seed data** — onboarding, week view,
-> setting availability, "Plan this day", reshuffle, bucket list, and settings all
-> work with **zero API keys and no credit card**. Live data sources (events,
-> places) light up progressively as you add keys; smarter LLM planning is an
-> opt-in via a secure server-side function (see [Going live later](#going-live-later)).
+> **Status:** everything works with **zero API keys and no credit card** —
+> onboarding, week view, setting availability, "Plan this day", reshuffle,
+> bucket list, and settings run on curated seed data plus two **key-free NYC
+> civic feeds** (Permitted Events, NYC Parks). Adding keys switches on **real
+> Ticketmaster, SeatGeek, and Google Places fetches**; smarter LLM planning is
+> an opt-in via a secure server-side function (see [Going live later](#going-live-later)).
 
 ---
 
@@ -40,7 +41,8 @@ mock data. **No keys. No cards. No accounts.**
 - **Week view** — see your next 7 days (America/New_York local).
 - **Set availability** — add free-time windows per day (`HH:MM`–`HH:MM`).
 - **Plan this day** — the deterministic heuristic planner packs each window into
-  an ordered, walkable itinerary from seed events + restaurants.
+  an ordered, walkable itinerary from seed events + restaurants (plus the two
+  key-free NYC civic feeds when reachable).
 - **Reshuffle** — re-pack a day with a modifier (more food / more active /
   cheaper / surprise me).
 - **Bucket list** — manage aspirational items; the planner prioritizes weaving
@@ -58,19 +60,24 @@ interface, so a Supabase backend can be added later without touching screens).
 
 | Capability        | Mock (default, zero-key)                     | Live (opt-in)                                       | Needs a card? |
 | ----------------- | -------------------------------------------- | --------------------------------------------------- | ------------- |
-| Events            | Curated NYC seed events                      | **Ticketmaster Discovery API** ¹                    | No            |
-| Restaurants/places| Curated NYC seed places                      | **Google Places API** ¹                             | **Yes**       |
+| Events            | Seed events + **key-free NYC civic feeds** ¹ | **Ticketmaster Discovery** + **SeatGeek** ¹         | No            |
+| Restaurants/places| Curated NYC seed places                      | **Google Places API (New)** ¹                       | **Yes**       |
 | Day planning      | **Deterministic on-device heuristic**        | Anthropic via secure Supabase **edge function** ²   | No ³          |
 | Persistence       | On-device AsyncStorage                       | Supabase (future swap)                              | No (free tier)|
 | Notifications     | Local notifications (Expo)                   | same — always local                                 | No            |
 | Booking/Tickets   | "Book"/"Tickets" deep-link out via `Linking` | same — **never auto-books**                         | No            |
 
-¹ The events/places adapters expose `{ name, isLive }` and flip to a live branch
-when their key is present, falling back to seed data on any error. In **this v1
-the live branch is a stub that still returns seed data** (each adapter carries a
-`TODO(prod)` to drop in the real API call) — so the wiring, flags, and Settings
-badges are real, but turning on a key won't change the data until the stub is
-filled in.
+¹ The live branches are **real fetches, not stubs**. With a key present, the
+events provider calls Ticketmaster Discovery v2 and SeatGeek, and the places
+provider calls Google Places (New) `searchText` — mapping real prices, ratings,
+and coordinates into candidates and snapping venues onto the app's neighborhood
+list (`lib/geo.ts`) so the strict neighborhood filter holds. Two more sources —
+**NYC Permitted Event Information** and **NYC Parks public events** — are open
+civic datasets that need **no key** and are always attempted. Every source is
+bounded by a fetch timeout and falls back to curated seed data on any failure,
+so a bad key or dead network never crashes a screen. Curated seed *activities*
+(museums, parks, walks) are always kept as a floor; curated seed *events* are
+used only when no ticketed live source returns anything usable for the day.
 
 ² The on-device heuristic planner is **always the planner the app uses today**.
 The only live-LLM path that is actually built is the server-side
@@ -94,13 +101,17 @@ screen.
 
 All of these are **opt-in**. Add the relevant key to a local `.env` (copy
 `.env.example`), restart `npx expo start`, and its **Live** badge appears in
-Settings → Data sources. Leave them out and the app stays on mock data.
+Settings → Data sources. Leave them out and the app stays on seed data (plus
+the two key-free civic feeds, which are always on).
 
 | Provider              | Cost                                  | Card? | Get a key                                                                 |
 | --------------------- | ------------------------------------- | :---: | ------------------------------------------------------------------------- |
 | **Ticketmaster** (events)      | Free, instant                | No    | https://developer.ticketmaster.com/                                       |
-| **Gemini** (planning) | Free tier, no card                    |  No   | https://aistudio.google.com/app/apikey                                    |
+| **SeatGeek** (events)          | Free, instant                | No    | https://seatgeek.com/account/develop                                      |
+| **NYC Open Data** (permitted events) | Free, **no key needed** | No   | — always on (public dataset)                                              |
+| **NYC Parks** (park events)    | Free, **no key needed**      | No    | — always on (public dataset)                                              |
 | **Google Places** (restaurants)| Free per-SKU monthly credit, then pay | **Yes** | https://console.cloud.google.com/google/maps-apis              |
+| **Gemini** (planning) | Free tier, no card                    |  No   | https://aistudio.google.com/app/apikey                                    |
 | **Anthropic** (planning, secure) | Pay-as-you-go              |  No*  | https://console.anthropic.com/  (used via the Supabase edge function)     |
 
 \* No card to get an Anthropic key, but the Messages API is paid usage. The
@@ -109,9 +120,10 @@ client key.
 
 **What each key does today:**
 
-- **Ticketmaster** / **Google Places** — recognized by `lib/config.ts`, flip the
-  provider's `isLive` flag, and show a **Live** badge. The live fetch itself is
-  still a seed-returning stub in v1 (see note ¹ above).
+- **Ticketmaster** / **SeatGeek** / **Google Places** — recognized by
+  `lib/config.ts`, flip the provider's `isLive` flag, show a **Live** badge, and
+  switch that provider to its **real API fetch** (see note ¹ above), with seed
+  data still the fallback on any failure.
 - **Gemini** — recognized and shown as a **Live** flag in Settings, but there is
   **no client Gemini planner adapter yet**, so adding this key does not change
   how days are planned. It's reserved for a future adapter; the heuristic planner
@@ -131,6 +143,7 @@ cp .env.example .env
 ```dotenv
 # All optional. Absent = that feature stays on mock data.
 EXPO_PUBLIC_TICKETMASTER_API_KEY=
+EXPO_PUBLIC_SEATGEEK_CLIENT_ID=
 EXPO_PUBLIC_GEMINI_API_KEY=
 EXPO_PUBLIC_GOOGLE_PLACES_API_KEY=
 # Supabase (future swap; optional)
@@ -180,28 +193,62 @@ adapter — screens stay untouched because they only depend on the interfaces.
 
 ---
 
+## Development
+
+```bash
+npm run typecheck   # tsc --noEmit
+npm run lint        # eslint (flat config via eslint-config-expo)
+npm test            # jest
+```
+
+CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs all three on
+every push / pull request to `main`.
+
+---
+
+## Standalone build (EAS)
+
+`eas.json` defines `development`, `development-simulator` (iOS Simulator
+build), `preview`, and `production` profiles. The `eas submit` config is
+intentionally empty for now — App Store submission is blocked on the pending
+**Apple Developer account**; until that lands, run the app via Expo Go
+(see [Run it](#run-it)).
+
+---
+
 ## Project layout
 
 ```
 app/                     # expo-router screens (file-based routing)
   _layout.tsx            #   root Stack + store bootstrap
   index.tsx              #   entry gate -> onboarding or week
+  welcome.tsx            #   full-bleed sunset-skyline landing screen
   onboarding.tsx         #   party size / neighborhoods / price / interests
   (tabs)/                #   bottom tabs: week, bucket, settings
-  day/[date].tsx         #   set availability windows for a day
-  plan/[date].tsx        #   "Plan this day", reshuffle, lock-in
-components/              # themed UI primitives + PlanItemCard
+  plan/[date].tsx        #   printed-guide day plan: itinerary + lock-in
+components/              # ui primitives + WeekGrid, DayPanel, PlanItemCard, Skyline
 lib/
   types.ts               # domain types (Profile, Availability, BucketItem, Plan, PlanItem, Feedback)
   config.ts              # env + provider flags ({ name, isLive })
   constants.ts           # NYC seed data: events, places, bucket-list seed
   theme.ts               # design tokens (no hardcoded hex in screens)
   time.ts                # America/New_York date + 'HH:MM' helpers
+  geo.ts                 # live-venue coordinates -> app neighborhood snapping
+  holidays.ts            # NYC notable dates (calendar tint + planner context)
+  labels.ts              # human stop labels ("LUNCH · Buvette")
+  maps.ts                # Directions deep-link builder (always returns a usable link)
+  confirm.ts             # cross-platform destructive confirm (web-safe)
   store.ts               # zustand store (wires repo + planner + providers + notifications)
   notifications.ts       # local-only expo-notifications scheduling
   storage/               # Repository interface + AsyncStorage implementation
   planner/               # Planner interface + deterministic heuristic (default)
-  providers/             # events/places providers (degrade to seed data)
+  providers/             # data sources (every one degrades gracefully)
+    eventsProvider.ts    #   merges Ticketmaster + SeatGeek + civic feeds over a seed floor
+    seatgeekProvider.ts  #   SeatGeek events (key-gated)
+    placesProvider.ts    #   Google Places restaurants (key-gated, seed fallback)
+    nycOpenDataProvider.ts #  NYC Permitted Event Information (key-free)
+    nycParksProvider.ts  #   NYC Parks public events (key-free)
+    net.ts               #   bounded fetchJson (timeout aborts, providers fall back)
 supabase/
   migrations/0001_init.sql
   functions/planDay/     # secure LLM-planning edge function (future)

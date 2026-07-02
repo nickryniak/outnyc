@@ -8,10 +8,10 @@
 // =============================================================================
 
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Home } from 'lucide-react-native';
-import { useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DayPanel } from '../../components/DayPanel';
@@ -22,6 +22,7 @@ import { confirmDestructive } from '../../lib/confirm';
 import { useStore } from '../../lib/store';
 import { colors, font, radius, spacing } from '../../lib/theme';
 import { addDays, mondayOf, todayNY, weekDates, weekRangeLabel } from '../../lib/time';
+import type { TimeWindow } from '../../lib/types';
 
 export default function WeekScreen() {
   const insets = useSafeAreaInsets();
@@ -38,9 +39,37 @@ export default function WeekScreen() {
   const [scrollEnabled, setScrollEnabled] = useState(true);
   const scrollRef = useRef<ScrollView>(null);
 
-  const today = todayNY();
+  const [today, setToday] = useState(() => todayNY());
   const monday = useMemo(() => mondayOf(addDays(today, weekOffset * 7)), [today, weekOffset]);
   const dates = useMemo(() => weekDates(monday), [monday]);
+
+  // 'today' is captured in state, so refresh it whenever the app foregrounds or
+  // this screen regains focus — otherwise the today-highlight (and the week the
+  // grid anchors to) go stale after midnight.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setToday(todayNY());
+    });
+    return () => sub.remove();
+  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      setToday(todayNY());
+    }, []),
+  );
+
+  // Stable callbacks so WeekGrid's memoized internals aren't re-rendered by
+  // fresh closures on every pass. Zustand actions are referentially stable.
+  const selectDay = useCallback((date: string) => {
+    setSelectedDate(date);
+    // Bring the panel into view.
+    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+  }, []);
+  const onSetWindows = useCallback(
+    (date: string, windows: TimeWindow[]) => void setAvailability(date, windows),
+    [setAvailability],
+  );
+  const onDragActive = useCallback((active: boolean) => setScrollEnabled(!active), []);
 
   if (loadStatus === 'loading' || loadStatus === 'idle') {
     return <LoadingView label="Loading your week…" />;
@@ -68,12 +97,6 @@ export default function WeekScreen() {
     );
   }
 
-  function selectDay(date: string) {
-    setSelectedDate(date);
-    // Bring the panel into view.
-    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
-  }
-
   return (
     <View style={styles.container}>
       {/* Header with subtle skyline */}
@@ -86,7 +109,7 @@ export default function WeekScreen() {
         <View style={[styles.headerText, { top: insets.top + 4 }]}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Back to the welcome screen"
+            accessibilityLabel="View the intro screen"
             onPress={() => router.push('/welcome')}
             hitSlop={10}
             style={styles.brandRow}
@@ -129,10 +152,18 @@ export default function WeekScreen() {
         scrollEnabled={scrollEnabled}
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xxl }]}
       >
-        <Caption muted>
-          Tap an hour to add free time, or drag down a day to paint a range. Tap
-          the neighborhood tag under a day to change where it happens.
-        </Caption>
+        {anyFree ? (
+          <Caption muted>
+            Tap an hour to add free time, or drag down a day to paint a range. Tap
+            the neighborhood tag under a day to change where it happens.
+          </Caption>
+        ) : (
+          <View style={styles.hintCard}>
+            <Text style={styles.hintLine}>Tap an hour to add free time.</Text>
+            <Text style={styles.hintLine}>Drag down a day to paint a range.</Text>
+            <Text style={styles.hintLine}>Drag a block&apos;s edges to resize it.</Text>
+          </View>
+        )}
 
         <WeekGrid
           dates={dates}
@@ -141,15 +172,9 @@ export default function WeekScreen() {
           plansByKey={plansByKey}
           selectedDate={selectedDate}
           onSelectDay={selectDay}
-          onSetWindows={(date, windows) => void setAvailability(date, windows)}
-          onDragActive={(active) => setScrollEnabled(!active)}
+          onSetWindows={onSetWindows}
+          onDragActive={onDragActive}
         />
-
-        {!anyFree && !anyPlans ? (
-          <Caption muted>
-            Mark some free time, then tap the day to plan it.
-          </Caption>
-        ) : null}
         {anyFree || anyPlans || anyDayPrefs ? (
           <Button label="Clear week" variant="ghost" onPress={onClearWeek} />
         ) : null}
@@ -193,4 +218,13 @@ const styles = StyleSheet.create({
   },
   navGlyph: { color: colors.onArt, fontSize: font.size.lg, lineHeight: font.size.lg + 2 },
   scroll: { padding: spacing.lg, gap: spacing.md },
+  hintCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  hintLine: { color: colors.textMuted, fontSize: font.size.sm, lineHeight: 20 },
 });

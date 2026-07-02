@@ -18,7 +18,7 @@ export const colors = {
   // Ink.
   text: '#211C17', // warm charcoal ink
   textMuted: '#6A5F51', // warm brown-gray
-  textFaint: '#9C9082',
+  textFaint: '#746A5B', // lightest ink that still passes WCAG AA on bg + surface
 
   // Warm editorial accents.
   accent: '#BE3B24', // deep terracotta / vermilion
@@ -93,8 +93,10 @@ export const font = {
     lg: 18,
     xl: 22,
     xxl: 28,
+    heroSm: 30, // plan hero titles
     display: 36,
     hero: 44,
+    wordmark: 60, // welcome wordmark
   },
   weight: {
     regular: '400',
@@ -103,6 +105,14 @@ export const font = {
     bold: '700',
   },
 } as const;
+
+/** A '#RRGGBB' token as an 'rgba(r, g, b, a)' string at the given opacity. */
+export function withAlpha(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
 // ---- Illustrated NYC skyline — time-of-day palettes -------------------------
 

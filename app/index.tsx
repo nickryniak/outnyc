@@ -1,7 +1,9 @@
 // =============================================================================
 // OutNYC — entry gate (app/index.tsx)
 // =============================================================================
-// Shows a loading state while bootstrapping, surfaces load errors, then routes
+// Shows a loading state while bootstrapping (normally covered by the native
+// splash, which the root layout holds until the store settles — the spinner is
+// only visible on a retry after an error), surfaces load errors, then routes
 // to onboarding (first run) or the week view.
 // =============================================================================
 

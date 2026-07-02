@@ -23,11 +23,16 @@ import { providerFlags } from '../../lib/config';
 import { confirmDestructive } from '../../lib/confirm';
 import { ensureNotificationPermission } from '../../lib/notifications';
 import { useStore } from '../../lib/store';
-import { colors, font, radius, spacing } from '../../lib/theme';
+import { colors, radius, spacing } from '../../lib/theme';
 
-type SourceStatus = 'On' | 'Coming soon' | 'Planned';
+type SourceStatus = 'On' | 'Ready to turn on' | 'On the roadmap' | 'Not wired up yet';
 
-/** Where picks come from, in plain language. Statuses flip on as feeds go live. */
+/**
+ * Where picks come from, in plain language. Each status is honest about where
+ * things stand: 'Ready to turn on' feeds are built and flip On once their key
+ * is set (lib/config.ts), 'On the roadmap' ones aren't built yet, and 'Not
+ * wired up yet' means a key alone changes nothing — the hookup isn't finished.
+ */
 const DATA_SOURCES: { name: string; detail: string; status: SourceStatus }[] = [
   {
     name: 'Curated NYC guide',
@@ -42,32 +47,46 @@ const DATA_SOURCES: { name: string; detail: string; status: SourceStatus }[] = [
   {
     name: 'Live concerts, shows, and tickets',
     detail: 'Ticketmaster listings with dates and ticket links.',
-    status: providerFlags.events.isLive ? 'On' : 'Coming soon',
+    status: providerFlags.events.isLive ? 'On' : 'Ready to turn on',
   },
   {
     name: 'More live events (SeatGeek)',
     detail: 'A second real ticketed-event feed — indie venues, sports, comedy.',
-    status: providerFlags.seatgeek.isLive ? 'On' : 'Coming soon',
+    status: providerFlags.seatgeek.isLive ? 'On' : 'Ready to turn on',
   },
   {
     name: 'Live restaurant and bar listings',
     detail: 'Google Places spots with real ratings, reviews, and websites.',
-    status: providerFlags.places.isLive ? 'On' : 'Coming soon',
+    status: providerFlags.places.isLive ? 'On' : 'Ready to turn on',
   },
   {
     name: 'City permitted events',
     detail: 'Real farmers markets, parades, street fairs, and plaza events.',
-    status: providerFlags.nycOpenData.isLive ? 'On' : 'Coming soon',
+    status: providerFlags.nycOpenData.isLive ? 'On' : 'Ready to turn on',
   },
   {
     name: 'NYC Parks programming',
     detail: 'Real concerts, nature walks, and free events in city parks.',
-    status: providerFlags.nycParks.isLive ? 'On' : 'Coming soon',
+    status: providerFlags.nycParks.isLive ? 'On' : 'Ready to turn on',
+  },
+  {
+    name: 'Smarter planning (Gemini)',
+    detail: providerFlags.geminiPlanner.isLive
+      ? 'Your key is set, but plans still come from the built-in planner — this hookup is not finished.'
+      : 'A smarter AI planner. Even with a key set, plans still come from the built-in planner for now.',
+    status: 'Not wired up yet',
+  },
+  {
+    name: 'Private smarter planning (secure server)',
+    detail: providerFlags.edgePlanner.isLive
+      ? 'Your server is set up, but plans still come from the built-in planner — this hookup is not finished.'
+      : 'The same smarter planner, run privately off-device. Setting it up does not change your plans yet.',
+    status: 'Not wired up yet',
   },
   {
     name: 'Community boards and groups',
     detail: 'Neighborhood happenings sourced from local groups and boards.',
-    status: 'Planned',
+    status: 'On the roadmap',
   },
 ];
 
@@ -156,12 +175,14 @@ export default function SettingsScreen() {
                   styles.badge,
                   src.status === 'On'
                     ? styles.badgeOn
-                    : src.status === 'Coming soon'
-                      ? styles.badgeSoon
-                      : styles.badgePlanned,
+                    : src.status === 'Ready to turn on'
+                      ? styles.badgeReady
+                      : src.status === 'Not wired up yet'
+                        ? styles.badgeUnwired
+                        : styles.badgeRoadmap,
                 ]}
               >
-                <Caption>{src.status}</Caption>
+                <Caption muted={src.status === 'On the roadmap'}>{src.status}</Caption>
               </View>
             </View>
           ))}
@@ -244,12 +265,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.secondarySoft,
     borderColor: colors.success,
   },
-  badgeSoon: {
+  badgeReady: {
     backgroundColor: colors.goldSoft,
     borderColor: colors.gold,
   },
-  badgePlanned: {
+  badgeUnwired: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
+  },
+  badgeRoadmap: {
     backgroundColor: colors.surfaceAlt,
     borderColor: colors.border,
+    borderStyle: 'dashed',
   },
 });

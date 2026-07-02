@@ -19,7 +19,7 @@ import { NEIGHBORHOODS } from '../constants';
 import { OUTSIDE_AREA_LABEL } from '../geo';
 import type { Candidate } from '../types';
 import type { ProviderResult } from './eventsProvider';
-import { fetchJson } from './net';
+import { fetchJson, isOnline } from './net';
 
 const DATASET_URL = 'https://data.cityofnewyork.us/resource/tvpp-9vvx.json';
 
@@ -61,11 +61,22 @@ function textNeighborhood(location: string, borough: string): string {
   return hit ?? OUTSIDE_AREA_LABEL;
 }
 
-function toCandidate(row: any): Candidate | null {
-  const name: unknown = row?.event_name;
-  const start: unknown = row?.start_date_time;
-  const end: unknown = row?.end_date_time;
-  const id: unknown = row?.event_id;
+/** The dataset fields actually read — compile-time documentation, not runtime validation. */
+interface NycPermittedEventRow {
+  event_id?: string;
+  event_name?: string;
+  start_date_time?: string;
+  end_date_time?: string;
+  event_type?: string;
+  event_location?: string;
+  event_borough?: string;
+}
+
+function toCandidate(row: NycPermittedEventRow): Candidate | null {
+  const name = row?.event_name;
+  const start = row?.start_date_time;
+  const end = row?.end_date_time;
+  const id = row?.event_id;
   if (typeof name !== 'string' || typeof start !== 'string' || typeof end !== 'string') {
     return null;
   }
@@ -91,6 +102,11 @@ function toCandidate(row: any): Candidate | null {
 
 export const nycOpenDataProvider = {
   async fetchEvents(date: string): Promise<ProviderResult> {
+    // This key-free feed is otherwise always attempted; when offline, return
+    // the empty fallback immediately instead of eating the full fetch timeout.
+    if (!(await isOnline())) {
+      return { candidates: [], live: false, error: 'offline' };
+    }
     try {
       const typeList = ATTENDABLE_TYPES.map((t) => `'${t}'`).join(',');
       const where =

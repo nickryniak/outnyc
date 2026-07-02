@@ -41,7 +41,7 @@ export function todayNY(): string {
  * DST offset (NY is UTC-4/-5, so noon UTC is always the same calendar day in NY).
  */
 function ymdToAnchorDate(ymd: string): Date {
-  const [y, m, d] = ymd.split('-').map((n) => parseInt(n, 10));
+  const [y = 0, m = 1, d = 1] = ymd.split('-').map((n) => parseInt(n, 10));
   return new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
 }
 
@@ -105,16 +105,21 @@ export function weekRangeLabel(mondayYmd: string): string {
   return `${monthDayLabel(mondayYmd)} – ${monthDayLabel(addDays(mondayYmd, 6))}`;
 }
 
-/** Single-letter weekday for a compact calendar header (M T W T F S S). */
+/** Two-letter weekday for a compact calendar header (Su Mo Tu We Th Fr Sa). */
 export function weekdayInitial(ymd: string): string {
-  return weekdayLabel(ymd).slice(0, 1);
+  return weekdayLabel(ymd).slice(0, 2);
+}
+
+/** Day of month (1..31) for a 'YYYY-MM-DD' date. */
+export function dayOfMonth(ymd: string): number {
+  return ymdToAnchorDate(ymd).getUTCDate();
 }
 
 // ---- 'HH:MM' helpers --------------------------------------------------------
 
 /** Minutes since midnight for an 'HH:MM' string. */
 export function toMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map((n) => parseInt(n, 10));
+  const [h = 0, m = 0] = hhmm.split(':').map((n) => parseInt(n, 10));
   return h * 60 + m;
 }
 
@@ -157,7 +162,7 @@ export function normalizeTime(input: string): string | null {
   let h: number;
   let m: number;
   if (trimmed.includes(':')) {
-    const [hs, ms] = trimmed.split(':');
+    const [hs = '', ms = ''] = trimmed.split(':');
     if (hs === '') return null;
     h = parseInt(hs, 10);
     m = parseInt(ms === '' ? '0' : ms, 10);
@@ -213,8 +218,17 @@ export function applyBlockDrag(
     }
   }
   if (ne - ns < minLen) {
-    if (edge === 'top') ns = ne - minLen;
-    else ne = ns + minLen;
+    if (edge === 'top') {
+      ns = ne - minLen;
+    } else {
+      // The minLen push can overshoot the day end; pull the block back inside
+      // rather than letting the final clamp silently shrink it below minLen.
+      ne = ns + minLen;
+      if (ne > dayEndMin) {
+        ne = dayEndMin;
+        ns = ne - minLen;
+      }
+    }
   }
   return { start: clamp(ns), end: clamp(ne) };
 }
@@ -231,7 +245,7 @@ export function formatWindow(w: TimeWindow): string {
 
 /** '18:00' -> '6:00 PM'. */
 export function format12h(hhmm: string): string {
-  const [h, m] = hhmm.split(':').map((n) => parseInt(n, 10));
+  const [h = 0, m = 0] = hhmm.split(':').map((n) => parseInt(n, 10));
   const period = h >= 12 ? 'PM' : 'AM';
   const h12 = h % 12 === 0 ? 12 : h % 12;
   return `${h12}:${String(m).padStart(2, '0')} ${period}`;
@@ -245,8 +259,8 @@ export function format12h(hhmm: string): string {
  * traveling user it no longer fires hours off.
  */
 export function nyDateTimeToLocalDate(ymd: string, hhmm: string): Date {
-  const [y, mo, d] = ymd.split('-').map((n) => parseInt(n, 10));
-  const [h, mi] = hhmm.split(':').map((n) => parseInt(n, 10));
+  const [y = 0, mo = 1, d = 1] = ymd.split('-').map((n) => parseInt(n, 10));
+  const [h = 0, mi = 0] = hhmm.split(':').map((n) => parseInt(n, 10));
   // Treat the wall-clock components as if they were UTC, then correct by the
   // America/New_York offset at that instant so the Date is the true NY moment.
   const asUTC = Date.UTC(y, mo - 1, d, h, mi, 0, 0);

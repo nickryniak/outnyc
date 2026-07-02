@@ -8,7 +8,9 @@
 // never fabricated ones. Without a key, serves curated seed places STRICTLY
 // narrowed to the selected neighborhoods (plus location-agnostic picks); there
 // is no widening, so a venue in an unpicked neighborhood can never leak in.
-// NEVER throws — any live failure falls back to the filtered seed.
+// NEVER throws — each neighborhood query fails independently, backfilled by
+// that neighborhood's seed; the wholesale seed fallback only applies when no
+// query produced anything.
 //
 // TODO(prod): route the Google Places key through a server/edge function rather
 // than bundling EXPO_PUBLIC_GOOGLE_PLACES_API_KEY into the client.
@@ -94,8 +96,23 @@ function gpPriceTier(level: string | undefined): PriceTier | undefined {
   }
 }
 
+/** The Places API v1 fields actually read — compile-time documentation, not runtime validation. */
+interface GooglePlace {
+  id?: string;
+  displayName?: { text?: string };
+  types?: string[];
+  primaryType?: string;
+  rating?: number;
+  userRatingCount?: number;
+  priceLevel?: string;
+  location?: { latitude?: number; longitude?: number };
+  formattedAddress?: string;
+  websiteUri?: string;
+  editorialSummary?: { text?: string };
+}
+
 /** Map one Places result into a Candidate with a coordinate-verified area. */
-function gpToCandidate(p: any, queriedNeighborhood: string): Candidate | null {
+function gpToCandidate(p: GooglePlace, queriedNeighborhood: string): Candidate | null {
   const name: string | undefined = p?.displayName?.text;
   if (!p?.id || !name) return null;
   const types: string[] = Array.isArray(p?.types) ? p.types : [];
@@ -156,14 +173,18 @@ export const placesProvider = {
     if (!providerFlags.places.isLive) {
       return { candidates: localSeed, live: false };
     }
-    try {
-      const targets = neighborhoods.slice(0, MAX_NEIGHBORHOOD_QUERIES);
-      const seen = new Set<string>();
-      const candidates: Candidate[] = [];
-      for (const nb of targets) {
-        // Anchor the search to the neighborhood's centroid; the text query
-        // alone is only a bias and can rank cross-town results.
-        const center = NEIGHBORHOOD_CENTERS[nb];
+    const targets = neighborhoods.slice(0, MAX_NEIGHBORHOOD_QUERIES);
+    const seen = new Set<string>();
+    const candidates: Candidate[] = [];
+    // Each neighborhood query fails independently: a timeout on the Nth query
+    // must not throw away the neighborhoods that already succeeded.
+    const failed: string[] = [];
+    const errors: string[] = [];
+    for (const nb of targets) {
+      // Anchor the search to the neighborhood's centroid; the text query
+      // alone is only a bias and can rank cross-town results.
+      const center = NEIGHBORHOOD_CENTERS[nb];
+      try {
         const json = await fetchJson(
           PLACES_URL,
           {
@@ -197,35 +218,34 @@ export const placesProvider = {
             candidates.push(c);
           }
         }
+      } catch (err) {
+        failed.push(nb);
+        errors.push(err instanceof Error ? err.message : 'places fetch failed');
       }
-      if (candidates.length === 0) {
-        return { candidates: localSeed, live: false, error: 'no live places returned' };
-      }
-      // Neighborhoods beyond the query cap never got a live call; keep their
-      // curated seed coverage so a 5th+ selected neighborhood isn't silently
-      // left with zero food/bar candidates. Only seeds explicitly IN those
-      // neighborhoods (location-agnostic seeds aren't re-admitted here).
-      const unqueried = neighborhoods.slice(MAX_NEIGHBORHOOD_QUERIES);
-      if (unqueried.length > 0) {
-        const want = new Set(unqueried.map((n) => n.trim().toLowerCase()));
-        for (const s of SEED_PLACES) {
-          if (
-            s.neighborhood &&
-            want.has(s.neighborhood.trim().toLowerCase()) &&
-            !seen.has(s.id)
-          ) {
-            seen.add(s.id);
-            candidates.push(s);
-          }
+    }
+    const error = errors.join('; ') || undefined;
+    if (candidates.length === 0) {
+      return { candidates: localSeed, live: false, error: error ?? 'no live places returned' };
+    }
+    // Failed neighborhoods got no live coverage, and neighborhoods beyond the
+    // query cap never got a live call at all; keep their curated seed
+    // coverage so they aren't silently left with zero food/bar candidates.
+    // Only seeds explicitly IN those neighborhoods (location-agnostic seeds
+    // aren't re-admitted here).
+    const seedOnly = [...failed, ...neighborhoods.slice(MAX_NEIGHBORHOOD_QUERIES)];
+    if (seedOnly.length > 0) {
+      const want = new Set(seedOnly.map((n) => n.trim().toLowerCase()));
+      for (const s of SEED_PLACES) {
+        if (
+          s.neighborhood &&
+          want.has(s.neighborhood.trim().toLowerCase()) &&
+          !seen.has(s.id)
+        ) {
+          seen.add(s.id);
+          candidates.push(s);
         }
       }
-      return { candidates, live: true };
-    } catch (err) {
-      return {
-        candidates: localSeed,
-        live: false,
-        error: err instanceof Error ? err.message : 'places fetch failed',
-      };
     }
+    return { candidates, live: true, error };
   },
 };

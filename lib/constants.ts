@@ -9,9 +9,9 @@
 // 'rooftop'. Keep BUCKET_SEED and SEED_PROFILE in sync with the SQL seed.
 // =============================================================================
 
-import type { BucketItem, Candidate, Profile } from './types';
+import type { BucketItem, Candidate, PriceTier, Profile } from './types';
 
-export const NEIGHBORHOODS: string[] = [
+export const NEIGHBORHOODS = [
   'West Village',
   'East Village',
   'Lower East Side',
@@ -24,7 +24,11 @@ export const NEIGHBORHOODS: string[] = [
   'Harlem',
   'Astoria',
   'Bushwick',
-];
+] as const;
+
+export type Neighborhood = (typeof NEIGHBORHOODS)[number];
+
+export const PRICE_TIERS: PriceTier[] = [1, 2, 3, 4];
 
 export const INTEREST_TAGS: string[] = [
   'live music',

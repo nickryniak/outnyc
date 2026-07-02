@@ -15,7 +15,6 @@ export function confirmDestructive(
   onConfirm: () => void,
 ): void {
   if (Platform.OS === 'web') {
-    // eslint-disable-next-line no-alert
     const ok = typeof window !== 'undefined' && window.confirm(`${title}\n\n${message}`);
     if (ok) onConfirm();
     return;

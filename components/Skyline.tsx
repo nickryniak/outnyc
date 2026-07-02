@@ -19,14 +19,18 @@ import Svg, {
   Stop,
 } from 'react-native-svg';
 
-import { sky, TimeOfDay } from '../lib/theme';
+import { radius, sky, TimeOfDay } from '../lib/theme';
 
 const VB_W = 400;
 const VB_H = 220;
 const G0 = 220; // ground line
 
-// Generic infill buildings: [x, width, height-from-ground].
-const GENERIC: [number, number, number][] = [
+/** A skyline slab — named tuple so a transposed coordinate fails to read
+ *  rather than silently misrendering. */
+type Building = [x: number, width: number, heightFromGround: number];
+
+// Generic infill buildings.
+const GENERIC: Building[] = [
   [-6, 30, 70],
   [58, 22, 96],
   [82, 18, 66],
@@ -40,7 +44,7 @@ const GENERIC: [number, number, number][] = [
   [390, 18, 62],
 ];
 
-const FAR: [number, number, number][] = [
+const FAR: Building[] = [
   [-6, 40, 54], [40, 34, 82], [82, 46, 60], [130, 30, 96],
   [168, 52, 70], [224, 34, 100], [268, 44, 62], [318, 40, 88], [364, 44, 58],
 ];
@@ -55,10 +59,16 @@ const WINDOWS: [number, number][] = [
   [334, 120], [342, 138], [334, 156],
 ];
 
+// Night-sky stars (x,y).
+const STARS: [number, number][] = [
+  [30, 30], [80, 46], [140, 24], [200, 40], [260, 22],
+  [330, 38], [370, 26], [110, 60], [240, 58], [300, 48],
+];
+
 export function Skyline({
   variant,
   height = 190,
-  rounded = 0,
+  rounded = radius.sm,
   style,
 }: {
   variant: TimeOfDay;
@@ -97,11 +107,9 @@ export function Skyline({
         <Rect x="0" y="0" width={VB_W} height={VB_H} fill="url(#sky)" />
 
         {showStars
-          ? [[30, 30], [80, 46], [140, 24], [200, 40], [260, 22], [330, 38], [370, 26], [110, 60], [240, 58], [300, 48]].map(
-              ([sx, sy], i) => (
-                <Circle key={`st-${i}`} cx={sx} cy={sy} r={i % 3 === 0 ? 1.6 : 1} fill={p.ink} opacity={0.85} />
-              ),
-            )
+          ? STARS.map(([sx, sy], i) => (
+              <Circle key={`st-${i}`} cx={sx} cy={sy} r={i % 3 === 0 ? 1.6 : 1} fill={p.ink} opacity={0.85} />
+            ))
           : null}
 
         <Circle cx={sunX} cy={sunY} r={variant === 'night' ? 16 : 26} fill={p.sun} opacity={variant === 'night' ? 0.9 : 0.95} />

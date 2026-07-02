@@ -35,8 +35,38 @@ function sgPriceTier(lowest: unknown): PriceTier | undefined {
   return 4;
 }
 
+// The SeatGeek fields actually read — compile-time documentation, not
+// runtime validation (hence optional everywhere; the mapper stays defensive).
+interface SeatGeekVenue {
+  name?: string;
+  address?: string;
+  city?: string;
+  location?: { lat?: number; lon?: number };
+}
+
+interface SeatGeekTaxonomy {
+  name?: string;
+}
+
+interface SeatGeekPerformer {
+  name?: string;
+  primary?: boolean;
+}
+
+interface SeatGeekEvent {
+  id?: number;
+  title?: string;
+  url?: string;
+  time_tbd?: boolean;
+  datetime_local?: string;
+  venue?: SeatGeekVenue;
+  performers?: SeatGeekPerformer[];
+  taxonomies?: SeatGeekTaxonomy[];
+  stats?: { lowest_price?: number | null };
+}
+
 /** Map a SeatGeek taxonomy name onto the app's interest tags. */
-function sgTags(taxonomies: any): string[] {
+function sgTags(taxonomies: SeatGeekTaxonomy[] | undefined): string[] {
   const name: string = Array.isArray(taxonomies) ? (taxonomies[0]?.name ?? '') : '';
   if (name === 'concert' || name === 'music_festival') return ['live music'];
   if (name === 'comedy') return ['comedy'];
@@ -48,9 +78,10 @@ function sgTags(taxonomies: any): string[] {
 }
 
 /** Map one SeatGeek event into a Candidate, or null if unusable for `date`. */
-function sgToCandidate(e: any, date: string): Candidate | null {
+function sgToCandidate(e: SeatGeekEvent, date: string): Candidate | null {
   if (e?.time_tbd) return null; // no real start time to schedule against
-  const dt: unknown = e?.datetime_local;
+  if (e?.id == null || !e?.title) return null;
+  const dt = e?.datetime_local;
   if (typeof dt !== 'string' || dt.slice(0, 10) !== date) return null;
   const startTime = dt.slice(11, 16);
   const endTime = fromMinutes(Math.min(toMinutes(startTime) + DEFAULT_EVENT_RUNTIME_MIN, 1439));
@@ -62,7 +93,7 @@ function sgToCandidate(e: any, date: string): Candidate | null {
 
   const address = [venue?.address, venue?.city].filter(Boolean).join(', ');
   const performer: string | undefined = Array.isArray(e?.performers)
-    ? e.performers.find((p: any) => p?.primary)?.name
+    ? e.performers.find((p) => p?.primary)?.name
     : undefined;
   const taxonomyName: string | undefined = e?.taxonomies?.[0]?.name;
   const description =
@@ -105,7 +136,7 @@ export const seatgeekProvider = {
         sort: 'datetime_local.asc',
       });
       const json = await fetchJson(`${SG_URL}?${params.toString()}`, undefined, 8000);
-      const events: any[] = Array.isArray(json?.events) ? json.events : [];
+      const events: SeatGeekEvent[] = Array.isArray(json?.events) ? json.events : [];
       const seen = new Set<string>();
       const candidates: Candidate[] = [];
       for (const e of events) {

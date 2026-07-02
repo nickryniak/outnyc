@@ -89,7 +89,7 @@ function pad2(n: number): string {
 
 /** The holiday for a 'YYYY-MM-DD' date, or null. */
 export function holidayFor(ymd: string): Holiday | null {
-  const [ys, ms, ds] = ymd.split('-');
+  const [ys = '', ms = '', ds = ''] = ymd.split('-');
   const y = parseInt(ys, 10);
   const m = parseInt(ms, 10);
   const d = parseInt(ds, 10);

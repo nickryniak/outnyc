@@ -6,35 +6,15 @@
 // deep-links. Walk/break stops render as a slim connector between entries.
 // =============================================================================
 
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { priceLabel, ratingText } from '../lib/format';
 import { stopLabel } from '../lib/labels';
+import { openExternal } from '../lib/linking';
 import { mapsUrl } from '../lib/maps';
 import { colors, font, kindColor, radius, spacing } from '../lib/theme';
 import { format12h, toMinutes } from '../lib/time';
-import type { PlanItem, PriceTier } from '../lib/types';
-
-function priceLabel(tier?: PriceTier): string {
-  return tier ? '$'.repeat(tier) : '';
-}
-
-/** "★ 4.6 (1.2k)" when a review score exists, else '' (curated seed has none). */
-function ratingText(rating?: number, count?: number): string {
-  if (rating == null) return '';
-  const c =
-    count != null
-      ? ` (${count >= 1000 ? `${(count / 1000).toFixed(1)}k` : count})`
-      : '';
-  return `★ ${rating.toFixed(1)}${c}`;
-}
-
-async function openExternal(url: string): Promise<void> {
-  try {
-    await Linking.openURL(url);
-  } catch (err) {
-    console.warn('[link] failed to open url:', err);
-  }
-}
+import type { PlanItem } from '../lib/types';
 
 export function PlanItemCard({ item, stopNumber }: { item: PlanItem; stopNumber?: number }) {
   const isConnector = item.kind === 'walk' || item.kind === 'break';
@@ -55,12 +35,28 @@ export function PlanItemCard({ item, stopNumber }: { item: PlanItem; stopNumber?
 
   const tint = kindColor(item.kind);
   const directions = mapsUrl(item);
+  // One spoken line for the whole entry; the Book/Directions Pressables stay
+  // individually focusable below it.
+  const summary = [
+    stopNumber != null ? `Stop ${stopNumber}` : 'Stop',
+    item.title,
+    `${format12h(item.startTime)} to ${format12h(item.endTime)}`,
+    item.neighborhood,
+  ]
+    .filter(Boolean)
+    .join(', ');
 
   return (
-    <View style={styles.stop}>
+    <View style={styles.stop} accessibilityLabel={summary}>
       <View style={styles.numeralCol}>
-        <View style={[styles.numeral, { borderColor: tint }]}>
-          <Text style={[styles.numeralText, { color: tint }]}>{stopNumber ?? '•'}</Text>
+        <View
+          accessible
+          accessibilityLabel={stopNumber != null ? `Stop ${stopNumber}` : 'Stop'}
+          style={[styles.numeral, { borderColor: tint }]}
+        >
+          <Text style={[styles.numeralText, { color: tint }]} maxFontSizeMultiplier={1.4}>
+            {stopNumber ?? '•'}
+          </Text>
         </View>
       </View>
 
@@ -74,7 +70,9 @@ export function PlanItemCard({ item, stopNumber }: { item: PlanItem; stopNumber?
           </Text>
         </View>
 
-        <Text style={styles.title}>{item.title}</Text>
+        <Text style={styles.title} numberOfLines={2} ellipsizeMode="tail">
+          {item.title}
+        </Text>
 
         {/* Provenance for bucket stops is the FROM YOUR LIST kind label above —
             no duplicate "from your list" suffix here. */}

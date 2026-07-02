@@ -23,16 +23,19 @@ import type {
   Candidate,
   Plan,
   PlanItem,
-  PlanItemKind,
-  PlanModifier,
   PriceRange,
   PriceTier,
 } from '../types';
 import type { Planner, PlanRequest } from './planner';
+import { overlap, scoreCandidate, type ScoringContext } from './scoring';
 import {
   allowedStart,
   candidateDuration,
+  DINNER,
+  DINNER_ANCHOR,
   hash,
+  LUNCH,
+  LUNCH_ANCHOR,
   matchesNeighborhoods,
   mealSlotAt,
   rebuildConnectors,
@@ -54,6 +57,17 @@ const MAX_STRETCH = 180;
 // candidate is dropped rather than forced in if it would strand the day with
 // more than this much dead time after something else is already scheduled.
 const MAX_ISOLATION_GAP = 120;
+// Smallest span the greedy filler will try to place a stop into; also the
+// "one minimal extra activity" a meal anchor must leave room for.
+const MIN_FILL_MIN = 30;
+// The widest possible price filter, used when starvation forces full widening.
+const FULL_PRICE_RANGE: PriceRange = { min: 1, max: 4 };
+// Pool-starvation floors: below these the price filter widens one notch, and
+// after that first widening each pool is judged ON ITS OWN, one notch leaner
+// (places < 2 or events < 1 forces full widening) — a healthy events pool must
+// never mask an empty places pool, since meal anchors draw only from places.
+const MIN_PLACES_POOL = 3;
+const MIN_EVENTS_POOL = 2;
 
 /**
  * Tighten the day so blocks flow without big empty gaps: stretch each FLEXIBLE
@@ -72,9 +86,9 @@ export function closeGaps(
 ): PlanItem[] {
   const sorted = [...items].sort((a, b) => toMinutes(a.startTime) - toMinutes(b.startTime));
   for (let i = 0; i < sorted.length - 1; i += 1) {
-    const cur = sorted[i];
+    const cur = sorted[i]!;
     if (fixedIds.has(cur.id)) continue; // never stretch a real event / meal anchor
-    const next = sorted[i + 1];
+    const next = sorted[i + 1]!;
     const curStart = toMinutes(cur.startTime);
     const curEnd = toMinutes(cur.endTime);
     const nextStart = toMinutes(next.startTime);
@@ -144,7 +158,7 @@ export function compactStops(
 
   // Pass 1: pull each flexible stop's start as early as gating allows.
   for (let i = 0; i < sorted.length; i += 1) {
-    const cur = sorted[i];
+    const cur = sorted[i]!;
     if (!movable(cur)) continue;
     const prev = i > 0 ? sorted[i - 1] : undefined;
     const lower = prev ? toMinutes(prev.endTime) + buffer(prev, cur) : winStart;
@@ -161,8 +175,8 @@ export function compactStops(
   // head run later as one piece. Only the run anchored at the window start can
   // shift later without just relocating the hole, so we handle exactly that.
   for (let i = 1; i < sorted.length; i += 1) {
-    const cur = sorted[i];
-    const prev = sorted[i - 1];
+    const cur = sorted[i]!;
+    const prev = sorted[i - 1]!;
     const gap = toMinutes(cur.startTime) - toMinutes(prev.endTime) - buffer(prev, cur);
     if (gap <= 0) continue;
     const run = sorted.slice(0, i);
@@ -194,28 +208,6 @@ function withinPrice(tier: PriceTier | undefined, price: PriceRange): boolean {
   return tier >= price.min && tier <= price.max;
 }
 
-/** Tag-overlap count between a candidate's tags and a tag list. */
-function overlap(tags: string[], wanted: string[]): number {
-  const set = new Set(wanted.map((t) => t.toLowerCase()));
-  return tags.reduce((n, t) => (set.has(t.toLowerCase()) ? n + 1 : n), 0);
-}
-
-/** How a modifier weights different kinds (higher = preferred). */
-function kindWeight(kind: PlanItemKind, modifier?: PlanModifier): number {
-  switch (modifier) {
-    case 'more-food':
-      return kind === 'restaurant' ? 3 : kind === 'bar' ? 1 : 0;
-    case 'more-active':
-      return kind === 'activity' ? 3 : kind === 'event' ? 2 : 0;
-    case 'cheaper':
-      return 0; // price handled separately by the cheaper bias
-    case 'surprise':
-      return 0; // surprise relies on the seed shuffle below
-    default:
-      return kind === 'event' ? 1 : 0;
-  }
-}
-
 interface Scored {
   candidate: Candidate;
   score: number;
@@ -223,37 +215,16 @@ interface Scored {
 
 /** Score + sort candidates for a given modifier (deterministic). */
 function rankCandidates(candidates: Candidate[], req: PlanRequest, seed: number): Scored[] {
-  const nbset = new Set(req.neighborhoods.map((n) => n.toLowerCase()));
+  const ctx: ScoringContext = {
+    neighborhoods: req.neighborhoods,
+    interests: req.interests,
+    holiday: req.holiday,
+    modifier: req.modifier,
+    seed,
+    nonce: req.nonce,
+  };
   return candidates
-    .map((candidate) => {
-      let score = 0;
-      // Neighborhood: a strong preference for a match, and a real penalty for a
-      // stop in a neighborhood the user did NOT pick, so a day set to Manhattan
-      // does not casually schedule a Brooklyn stop when local options exist.
-      if (candidate.neighborhood) {
-        score += nbset.has(candidate.neighborhood.toLowerCase()) ? 6 : -3;
-      }
-      // Interest overlap.
-      score += overlap(candidate.tags, req.interests) * 2;
-      // Holiday context: lean into the day (e.g. rooftops on July 4th).
-      if (req.holiday) {
-        score += overlap(candidate.tags, req.holiday.boostTags) * 4;
-      }
-      // Modifier kind weighting.
-      score += kindWeight(candidate.kind, req.modifier) * 3;
-      // "cheaper" prefers lower tiers.
-      if (req.modifier === 'cheaper') {
-        score += (5 - (candidate.priceTier ?? 4)) * 2;
-      }
-      // Deterministic tie-break that varies by modifier+date so reshuffle
-      // across modifiers reorders selection.
-      const jitter = hash(candidate.id + ':' + seed) % 7;
-      // "surprise" leans heavily on jitter; an explicit reshuffle (nonce > 0)
-      // also shuffles noticeably, while the first generation stays near-stable.
-      const jitterWeight = req.modifier === 'surprise' ? 2 : req.nonce ? 1.3 : 0.1;
-      score += jitter * jitterWeight;
-      return { candidate, score };
-    })
+    .map((candidate) => ({ candidate, score: scoreCandidate(candidate, ctx) }))
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       // Stable final tie-break by id hash.
@@ -369,14 +340,19 @@ export class HeuristicPlanner implements Planner {
     // back as if it were a fresh pick. When the catalog is genuinely exhausted
     // the day honestly gets fewer stops instead of silently repeating.
     let pools = buildPools(basePrice, true);
-    if (pools.places.length < 3 || pools.events.length < 2) {
+    if (pools.places.length < MIN_PLACES_POOL || pools.events.length < MIN_EVENTS_POOL) {
       const widened: PriceRange = {
-        min: Math.max(1, basePrice.min - 1) as PriceTier,
-        max: Math.min(4, basePrice.max + 1) as PriceTier,
+        min: Math.max(FULL_PRICE_RANGE.min, basePrice.min - 1) as PriceTier,
+        max: Math.min(FULL_PRICE_RANGE.max, basePrice.max + 1) as PriceTier,
       };
       pools = buildPools(widened, true);
-      if (pools.places.length + pools.events.length < 3) {
-        pools = buildPools({ min: 1, max: 4 }, true);
+      // Each pool independently: a combined count would let events alone hide
+      // an empty places pool, silently starving the meal anchors below.
+      if (
+        pools.places.length < MIN_PLACES_POOL - 1 ||
+        pools.events.length < MIN_EVENTS_POOL - 1
+      ) {
+        pools = buildPools(FULL_PRICE_RANGE, true);
       }
     }
 
@@ -389,7 +365,7 @@ export class HeuristicPlanner implements Planner {
     // Preference order: weave in one bucket item first (when it fits), then
     // alternate events/places by rank for variety.
     const preference: Candidate[] = [];
-    if (rankedBuckets.length > 0) preference.push(rankedBuckets[0].candidate);
+    if (rankedBuckets.length > 0) preference.push(rankedBuckets[0]!.candidate);
 
     const evs = rankedEvents.map((s) => s.candidate);
     const pls = rankedPlaces.map((s) => s.candidate);
@@ -399,11 +375,11 @@ export class HeuristicPlanner implements Planner {
     const placesFirst = req.modifier === 'more-food';
     while (ei < evs.length || pi < pls.length) {
       if (placesFirst) {
-        if (pi < pls.length) preference.push(pls[pi++]);
-        if (ei < evs.length) preference.push(evs[ei++]);
+        if (pi < pls.length) preference.push(pls[pi++]!);
+        if (ei < evs.length) preference.push(evs[ei++]!);
       } else {
-        if (ei < evs.length) preference.push(evs[ei++]);
-        if (pi < pls.length) preference.push(pls[pi++]);
+        if (ei < evs.length) preference.push(evs[ei++]!);
+        if (pi < pls.length) preference.push(pls[pi++]!);
       }
     }
 
@@ -420,20 +396,34 @@ export class HeuristicPlanner implements Planner {
     // Meal anchors: if the window covers a mealtime, reserve a restaurant so a
     // night out always includes dinner (and a midday plan includes lunch),
     // instead of two fixed events crowding food out. Anchors are synthetic
-    // fixed stops; the packer places them ahead of same-time events.
+    // fixed stops; the packer places them ahead of same-time events. Targets
+    // and gates derive from slotUtils' meal windows (one source of truth).
     const restaurants = rankedPlaces.map((s) => s.candidate).filter((c) => c.kind === 'restaurant');
+    // When the request has other (timeless, non-meal) picks to place, a meal
+    // anchor must not monopolize a window too small for the meal plus one
+    // minimal extra stop — the short window goes to the activity instead
+    // (a restaurant can still land organically via the flexible fill).
+    const wantsOtherActivity = preference.some((c) => !hasTimes(c) && c.kind !== 'restaurant');
     const anchorUsed = new Set<string>();
     const anchors: Candidate[] = [];
-    const addAnchor = (centerMin: number, dur: number) => {
-      const start = Math.max(winStart, centerMin);
-      if (start + dur > winEnd) return;
+    const addAnchor = (targetMin: number, dur: number) => {
+      // Clamp into the window so an odd window (e.g. one ending 18:30) pulls
+      // the meal earlier instead of dropping it; allowedStart below still
+      // gates the clamped start to real meal hours when picking the venue.
+      const start = Math.min(Math.max(winStart, targetMin), winEnd - dur);
+      if (start < winStart) return; // window can't fit the meal at all
+      if (wantsOtherActivity && winEnd - winStart < dur + GAP_MIN + MIN_FILL_MIN) return;
       const cand = restaurants.find((c) => !anchorUsed.has(c.id) && allowedStart(c, start));
       if (!cand) return;
       anchorUsed.add(cand.id);
       anchors.push({ ...cand, startTime: fromMinutes(start), endTime: fromMinutes(start + dur) });
     };
-    if (winStart < toMinutes('14:00') && winEnd > toMinutes('12:00')) addAnchor(toMinutes('12:00'), 75);
-    if (winStart < toMinutes('21:00') && winEnd > toMinutes('17:30')) addAnchor(toMinutes('17:30'), 90);
+    if (winStart < LUNCH.end && winEnd > LUNCH_ANCHOR.start) {
+      addAnchor(LUNCH_ANCHOR.start, LUNCH_ANCHOR.durationMin);
+    }
+    if (winStart < DINNER.end && winEnd > DINNER_ANCHOR.start) {
+      addAnchor(DINNER_ANCHOR.start, DINNER_ANCHOR.durationMin);
+    }
     const anchorIds = new Set(anchors.map((a) => a.id));
 
     const fixed = [...preference.filter(isFixed), ...anchors].sort((a, b) => {
@@ -514,7 +504,7 @@ export class HeuristicPlanner implements Planner {
      */
     const fillUntil = (limit: number, reserveGap: boolean): void => {
       let progressed = true;
-      while (progressed && limit - cursor >= 30) {
+      while (progressed && limit - cursor >= MIN_FILL_MIN) {
         progressed = false;
         for (const cand of flexible) {
           if (usedIds.has(cand.id)) continue;
@@ -566,9 +556,12 @@ export class HeuristicPlanner implements Planner {
       // something, since one early filler stop followed by a long unfillable
       // stretch must still count as isolated).
       if (ev.soft) {
-        const lastPlaced = items.length > 0 ? items[items.length - 1] : null;
-        const trueGapStart = lastPlaced ? toMinutes(lastPlaced.endTime) : winStart;
-        if (lastPlaced && evS - trueGapStart > MAX_ISOLATION_GAP) {
+        // The latest end across ALL placed items, not the last-inserted one:
+        // insertion order is not chronological once anchors and fillers mix.
+        let lastEnd = -1;
+        for (const it of items) lastEnd = Math.max(lastEnd, toMinutes(it.endTime));
+        const trueGapStart = lastEnd >= 0 ? lastEnd : winStart;
+        if (lastEnd >= 0 && evS - trueGapStart > MAX_ISOLATION_GAP) {
           // Undo the nudge-only cursor advance so a dropped event never
           // pollutes the next fixed event's own gap math.
           cursor = cursorBeforeFill;

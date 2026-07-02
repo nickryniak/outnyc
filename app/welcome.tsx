@@ -50,7 +50,12 @@ export default function Welcome() {
             Mark when you are free and get a walkable plan for every day of your
             week: events, restaurants, and your own bucket list, in order.
           </Text>
-          <Button label="Start planning" onPress={enter} style={styles.cta} />
+          {/* Revisited from inside the app, the CTA pops back — say so. */}
+          <Button
+            label={router.canGoBack() ? 'Back to your week' : 'Start planning'}
+            onPress={enter}
+            style={styles.cta}
+          />
         </View>
       </View>
     </View>
@@ -74,9 +79,9 @@ const styles = StyleSheet.create({
   wordmark: {
     color: colors.onArt,
     fontFamily: font.family.displayBlack,
-    fontSize: 60,
+    fontSize: font.size.wordmark,
     letterSpacing: -1.5,
-    lineHeight: 62,
+    lineHeight: font.size.wordmark + 2,
   },
   tagline: {
     color: colors.onArt,

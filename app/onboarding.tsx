@@ -8,17 +8,23 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Skyline } from '../components/Skyline';
-import { Body, Button, Caption, Chip, Eyebrow, Heading } from '../components/ui';
-import { INTEREST_TAGS, NEIGHBORHOODS } from '../lib/constants';
+import { Body, Button, Caption, Chip, Eyebrow } from '../components/ui';
+import { INTEREST_TAGS, NEIGHBORHOODS, PRICE_TIERS } from '../lib/constants';
 import { useStore } from '../lib/store';
 import { colors, font, radius, spacing } from '../lib/theme';
 import type { PriceTier } from '../lib/types';
-
-const PRICE_TIERS: PriceTier[] = [1, 2, 3, 4];
 
 export default function Onboarding() {
   const router = useRouter();
@@ -76,7 +82,10 @@ export default function Onboarding() {
   }
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingTop: insets.top }]}
         showsVerticalScrollIndicator={false}
@@ -178,7 +187,7 @@ export default function Onboarding() {
         />
         {isEdit ? <Button label="Cancel" variant="ghost" onPress={exitEdit} /> : null}
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

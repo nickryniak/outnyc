@@ -28,9 +28,9 @@ import type { Plan, PriceTier, TimeWindow } from '../../lib/types';
 /** A one-line summary: stop count · span · price range. */
 function planSummary(plan: Plan): string {
   const stops = plan.items.filter((i) => i.kind !== 'walk' && i.kind !== 'break');
-  if (stops.length === 0) return 'No stops';
   const first = stops[0];
   const last = stops[stops.length - 1];
+  if (!first || !last) return 'No stops';
   const tiers = stops.map((s) => s.priceTier).filter((t): t is PriceTier => t != null);
   const priceText =
     tiers.length > 0
@@ -65,6 +65,7 @@ export default function PlanScreen() {
       {windows.map((w) => (
         <WindowPlan key={`${w.start}-${w.end}`} date={date} window={w} />
       ))}
+      <Caption muted>To change a plan, use Reshuffle or Swap on the calendar.</Caption>
     </ScrollView>
   );
 }
@@ -99,7 +100,9 @@ function WindowPlan({ date, window }: { date: string; window: TimeWindow }) {
     }
   }
 
-  let stopN = 0;
+  // Number the real stops by their position among non-connectors (walks and
+  // breaks are unnumbered), instead of mutating a counter mid-render.
+  const stops = plan?.items.filter((i) => i.kind !== 'walk' && i.kind !== 'break') ?? [];
 
   return (
     <View style={styles.windowBlock}>
@@ -139,18 +142,20 @@ function WindowPlan({ date, window }: { date: string; window: TimeWindow }) {
       ) : (
         <View style={styles.itinerary}>
           {plan.items.map((item) => {
-            const isConnector = item.kind === 'walk' || item.kind === 'break';
-            const n = isConnector ? undefined : (stopN += 1);
-            return <PlanItemCard key={`${item.order}-${item.id}`} item={item} stopNumber={n} />;
+            const idx = stops.indexOf(item);
+            return (
+              <PlanItemCard
+                key={`${item.order}-${item.id}`}
+                item={item}
+                stopNumber={idx === -1 ? undefined : idx + 1}
+              />
+            );
           })}
         </View>
       )}
 
       {plan ? (
         <View style={styles.controls}>
-          <Caption muted>
-            To change this plan, use Reshuffle or Swap on the calendar.
-          </Caption>
           {plan.items.length > 0 ? (
             <Button
               label={locked ? 'Reschedule reminders' : 'Lock in and remind me'}
@@ -218,9 +223,9 @@ const styles = StyleSheet.create({
   heroTitle: {
     color: colors.onArt,
     fontFamily: font.family.display,
-    fontSize: 30,
+    fontSize: font.size.heroSm,
     letterSpacing: -0.6,
-    lineHeight: 34,
+    lineHeight: font.size.heroSm + 4,
   },
   summary: {
     color: colors.textMuted,

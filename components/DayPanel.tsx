@@ -12,10 +12,9 @@
 
 import { useRouter } from 'expo-router';
 import { BellRing, ChevronDown, ChevronUp, ExternalLink, RefreshCw, X } from 'lucide-react-native';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import {
   ActivityIndicator,
-  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -23,16 +22,16 @@ import {
 } from 'react-native';
 
 import { confirmDestructive } from '../lib/confirm';
-import { INTEREST_TAGS, NEIGHBORHOODS } from '../lib/constants';
+import { INTEREST_TAGS, NEIGHBORHOODS, PRICE_TIERS } from '../lib/constants';
+import { priceLabel, ratingText } from '../lib/format';
 import { holidayFor } from '../lib/holidays';
 import { stopLabel } from '../lib/labels';
+import { openExternal } from '../lib/linking';
 import { mapsUrl } from '../lib/maps';
 import { CROSS_CATEGORY_INTENTS, planKey, resolvePrefs, useStore, type SwapIntent } from '../lib/store';
-import { colors, font, kindColor, radius, spacing } from '../lib/theme';
+import { colors, font, kindColor, radius, spacing, withAlpha } from '../lib/theme';
 import { format12h, monthDayLabel, weekdayLabel } from '../lib/time';
-import type { Candidate, PlanItem, PriceTier, TimeWindow } from '../lib/types';
-
-const PRICE_TIERS: PriceTier[] = [1, 2, 3, 4];
+import type { Candidate, PlanItem, PlanItemKind, PriceTier, TimeWindow } from '../lib/types';
 
 /** Human label for a swap intent, used for both the chip and failure copy. */
 const INTENT_LABEL: Record<SwapIntent, string> = {
@@ -43,12 +42,21 @@ const INTENT_LABEL: Record<SwapIntent, string> = {
   italian: 'Italian',
   pizza: 'Pizza',
   japanese: 'Japanese',
+  sushi: 'Sushi',
+  thai: 'Thai',
+  chinese: 'Chinese',
+  korean: 'Korean',
+  indian: 'Indian',
+  mexican: 'Mexican',
   french: 'French',
   southern: 'Southern',
   greek: 'Greek',
   deli: 'Deli',
   mediterranean: 'Mediterranean',
   peruvian: 'Peruvian',
+  seafood: 'Seafood',
+  steakhouse: 'Steakhouse',
+  vegan: 'Vegan',
   bakery: 'Bakery',
   coffee: 'Coffee',
   rooftop: 'Rooftop',
@@ -75,12 +83,21 @@ const SWAP_INTENT_GROUPS: { label: string; intents: SwapIntent[] }[] = [
       'italian',
       'pizza',
       'japanese',
+      'sushi',
+      'thai',
+      'chinese',
+      'korean',
+      'indian',
+      'mexican',
       'french',
       'southern',
       'greek',
       'deli',
       'mediterranean',
       'peruvian',
+      'seafood',
+      'steakhouse',
+      'vegan',
       'bakery',
       'coffee',
     ],
@@ -88,27 +105,21 @@ const SWAP_INTENT_GROUPS: { label: string; intents: SwapIntent[] }[] = [
   { label: 'Vibe', intents: ['rooftop', 'live-music', 'comedy', 'art', 'outdoors', 'film'] },
 ];
 
-function priceLabel(tier?: PriceTier): string {
-  return tier ? '$'.repeat(tier) : '';
+/** Which swap group opens by default, keyed off what's scheduled here now. */
+function defaultSwapGroup(kind: PlanItemKind): string {
+  if (kind === 'restaurant') return 'Cuisine';
+  if (kind === 'bar' || kind === 'event') return 'Vibe';
+  return 'Adjust';
 }
 
-/** "★ 4.6 (1.2k)" when a review score exists, else '' (curated seed has none). */
-function ratingText(rating?: number, count?: number): string {
-  if (rating == null) return '';
-  const c =
-    count != null
-      ? ` (${count >= 1000 ? `${(count / 1000).toFixed(1)}k` : count})`
-      : '';
-  return `★ ${rating.toFixed(1)}${c}`;
-}
-
-async function open(url: string): Promise<void> {
-  try {
-    await Linking.openURL(url);
-  } catch (err) {
-    console.warn('[link] failed to open url:', err);
-  }
-}
+/**
+ * The one canonical "the week's catalog is used up here" message. Repeats are
+ * never served, so an empty window, a failed swap, and an empty alternatives
+ * list all mean the same thing — keep them saying the same thing.
+ */
+const NOTHING_NEW_COPY =
+  "Nothing new fits here this week — you've seen everything that matches. Try a " +
+  "longer window, a wider price range, or different neighborhoods for this day.";
 
 const PRESETS: { label: string; start: string; end: string }[] = [
   { label: 'Morning', start: '09:00', end: '12:00' },
@@ -134,7 +145,15 @@ export function DayPanel({ date, onClose }: { date: string; onClose: () => void 
   const [busy, setBusy] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
 
-  if (!profile) return null;
+  if (!profile) {
+    // Still hydrating — hold the panel's place instead of blinking it away.
+    return (
+      <View style={styles.panel}>
+        <View style={styles.skeletonLine} />
+        <View style={[styles.skeletonLine, { width: '55%' }]} />
+      </View>
+    );
+  }
   const prefs = resolvePrefs(profile, dayPrefs);
   // A real day override carries more than just its `date` key (a cleared one is
   // just `{date}`), so the day is clearable even with no free time yet.
@@ -170,7 +189,11 @@ export function DayPanel({ date, onClose }: { date: string; onClose: () => void 
             {weekdayLabel(date)}, {monthDayLabel(date)}
           </Text>
           {holiday ? (
-            <Text style={[styles.holidayLabel, { color: holiday.color }]}>{holiday.name}</Text>
+            // Soft same-hue wash behind the colored name keeps it readable on
+            // cream no matter which accent the holiday carries.
+            <View style={[styles.holidayChip, { backgroundColor: withAlpha(holiday.color, 0.15) }]}>
+              <Text style={[styles.holidayLabel, { color: holiday.color }]}>{holiday.name}</Text>
+            </View>
           ) : null}
         </View>
         {windows.length > 0 ? (
@@ -192,7 +215,8 @@ export function DayPanel({ date, onClose }: { date: string; onClose: () => void 
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close day panel"
-          hitSlop={8}
+          // 16px icon + 4px padding = 24px visible; +12 a side clears 40px.
+          hitSlop={12}
           onPress={onClose}
           style={styles.closeBtn}
         >
@@ -206,9 +230,9 @@ export function DayPanel({ date, onClose }: { date: string; onClose: () => void 
         accessibilityHint="Shows neighborhoods, price, and party size for this day. Double tap to edit."
         accessibilityState={{ expanded: prefsOpen }}
         onPress={() => setPrefsOpen((o) => !o)}
-        style={styles.prefsToggle}
+        style={({ pressed }) => [styles.prefsToggle, pressed && styles.prefsTogglePressed]}
       >
-        <Text style={styles.prefsToggleText}>
+        <Text style={styles.prefsToggleText} numberOfLines={2} ellipsizeMode="tail">
           {prefs.neighborhoods.slice(0, 3).join(', ')}
           {prefs.neighborhoods.length > 3 ? ` +${prefs.neighborhoods.length - 3}` : ''}
           {'  ·  '}
@@ -298,6 +322,7 @@ function DayPrefsEditor({ date }: { date: string }) {
             <Pressable
               key={n}
               accessibilityRole="button"
+              accessibilityState={{ selected: on }}
               onPress={() => void setDayPrefs(date, { neighborhoods: toggleList(prefs.neighborhoods, n) })}
               style={[styles.chip, on && styles.chipOn]}
             >
@@ -315,10 +340,13 @@ function DayPrefsEditor({ date }: { date: string }) {
             <Pressable
               key={t}
               accessibilityRole="button"
+              accessibilityState={{ selected: on }}
               onPress={() => {
+                // Move whichever edge is strictly closer to the tapped tier;
+                // an exact tie moves max.
                 const { min, max } = prefs.price;
                 const next =
-                  Math.abs(t - min) <= Math.abs(t - max)
+                  Math.abs(t - min) < Math.abs(t - max)
                     ? { min: Math.min(t, max) as PriceTier, max }
                     : { min, max: Math.max(t, min) as PriceTier };
                 void setDayPrefs(date, { price: next });
@@ -337,9 +365,11 @@ function DayPrefsEditor({ date }: { date: string }) {
             onPress={() => void setDayPrefs(date, { partySize: Math.max(1, prefs.partySize - 1) })}
             style={styles.stepBtn}
           >
-            <Text style={styles.stepText}>−</Text>
+            <Text style={styles.stepText} maxFontSizeMultiplier={1.4}>−</Text>
           </Pressable>
-          <Text style={styles.stepValue}>party of {prefs.partySize}</Text>
+          <Text style={styles.stepValue} accessibilityLiveRegion="polite">
+            party of {prefs.partySize}
+          </Text>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Larger party"
@@ -347,7 +377,7 @@ function DayPrefsEditor({ date }: { date: string }) {
             onPress={() => void setDayPrefs(date, { partySize: Math.min(20, prefs.partySize + 1) })}
             style={styles.stepBtn}
           >
-            <Text style={styles.stepText}>+</Text>
+            <Text style={styles.stepText} maxFontSizeMultiplier={1.4}>+</Text>
           </Pressable>
         </View>
       </View>
@@ -360,6 +390,7 @@ function DayPrefsEditor({ date }: { date: string }) {
             <Pressable
               key={t}
               accessibilityRole="button"
+              accessibilityState={{ selected: on }}
               onPress={() => void setDayPrefs(date, { interests: toggleList(prefs.interests, t) })}
               style={[styles.chip, on && styles.chipOn]}
             >
@@ -382,7 +413,15 @@ function DayPrefsEditor({ date }: { date: string }) {
 
 // ---- One window's itinerary ----------------------------------------------------
 
-function WindowItinerary({ date, window: w }: { date: string; window: TimeWindow }) {
+// Memoized: DayPanel re-renders on every store change; a window's props
+// (date + the window object off the stable availability record) rarely do.
+const WindowItinerary = memo(function WindowItinerary({
+  date,
+  window: w,
+}: {
+  date: string;
+  window: TimeWindow;
+}) {
   const key = planKey(date, w);
   const plan = useStore((s) => s.plansByKey[key]);
   const planning = useStore((s) => s.planning[key]);
@@ -424,11 +463,7 @@ function WindowItinerary({ date, window: w }: { date: string; window: TimeWindow
         <Text style={styles.windowLabel}>
           {format12h(w.start)} to {format12h(w.end)}
         </Text>
-        <Text style={styles.emptyText}>
-          Nothing new fit this window this week — you&apos;ve seen everything that
-          matches. Try a longer window, a wider price range, or different
-          neighborhoods for this day.
-        </Text>
+        <Text style={styles.emptyText}>{NOTHING_NEW_COPY}</Text>
       </View>
     );
   }
@@ -443,11 +478,13 @@ function WindowItinerary({ date, window: w }: { date: string; window: TimeWindow
       ))}
     </View>
   );
-}
+});
 
 // ---- One stop row with swap + alternatives -------------------------------------
 
-function StopRow({
+// Memoized for the same reason as WindowItinerary; `item` is a stable ref
+// until the plan itself changes.
+const StopRow = memo(function StopRow({
   date,
   window: w,
   item,
@@ -462,6 +499,11 @@ function StopRow({
   const [swapping, setSwapping] = useState(false);
   const [swapMsg, setSwapMsg] = useState<string | null>(null);
   const [swapMenuOpen, setSwapMenuOpen] = useState(false);
+  // Only the group most relevant to this stop starts expanded — 21 flat chips
+  // is a wall; the rest stay one tap away behind their headers.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => ({
+    [defaultSwapGroup(item.kind)]: true,
+  }));
   const [altsOpen, setAltsOpen] = useState(false);
   const [alts, setAlts] = useState<Candidate[] | null>(null);
 
@@ -485,7 +527,7 @@ function StopRow({
         setSwapMsg(
           list.length > 0
             ? 'That option was just used elsewhere this week — pick from the refreshed list.'
-            : "Nothing new nearby fits this slot this week. Widen this day's neighborhoods or price to see more.",
+            : NOTHING_NEW_COPY,
         );
       } else {
         // Be honest instead of silently doing nothing. Repeats are never
@@ -495,7 +537,7 @@ function StopRow({
             ? CROSS_CATEGORY_INTENTS.has(intent)
               ? `Nothing ${INTENT_LABEL[intent].toLowerCase()} fits this slot anywhere this week — every venue type was checked.`
               : `Nothing ${INTENT_LABEL[intent].toLowerCase()} nearby fits this slot this week.`
-            : "Nothing new nearby fits this slot this week. Widen this day's neighborhoods or price to see more.",
+            : NOTHING_NEW_COPY,
         );
       }
     } finally {
@@ -541,32 +583,54 @@ function StopRow({
 
       {swapMenuOpen ? (
         <View style={styles.swapMenuGroups}>
-          {SWAP_INTENT_GROUPS.map((group) => (
-            <View key={group.label}>
-              <Text style={styles.swapGroupLabel}>{group.label}</Text>
-              <View style={styles.swapMenu}>
-                {group.intents.map((intent) => (
-                  <Pressable
-                    key={intent}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Swap for something ${INTENT_LABEL[intent].toLowerCase()}`}
-                    disabled={swapping}
-                    onPress={() => void onSwap(undefined, intent)}
-                    style={[styles.swapChip, swapping && { opacity: 0.5 }]}
-                  >
-                    <Text style={styles.swapChipText}>{INTENT_LABEL[intent]}</Text>
-                  </Pressable>
-                ))}
+          {SWAP_INTENT_GROUPS.map((group) => {
+            const open = !!openGroups[group.label];
+            return (
+              <View key={group.label}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: open }}
+                  hitSlop={6}
+                  onPress={() =>
+                    setOpenGroups((g) => ({ ...g, [group.label]: !g[group.label] }))
+                  }
+                  style={styles.swapGroupHead}
+                >
+                  <Text style={styles.swapGroupLabel}>{group.label}</Text>
+                  {open ? (
+                    <ChevronUp size={12} color={colors.textMuted} />
+                  ) : (
+                    <ChevronDown size={12} color={colors.textMuted} />
+                  )}
+                </Pressable>
+                {open ? (
+                  <View style={styles.swapMenu}>
+                    {group.intents.map((intent) => (
+                      <Pressable
+                        key={intent}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Swap for something ${INTENT_LABEL[intent].toLowerCase()}`}
+                        disabled={swapping}
+                        onPress={() => void onSwap(undefined, intent)}
+                        style={[styles.swapChip, swapping && { opacity: 0.5 }]}
+                      >
+                        <Text style={styles.swapChipText}>{INTENT_LABEL[intent]}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : null}
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
       ) : null}
 
       <Text style={[styles.stopKind, { color: kindColor(item.kind) }]}>
         {label.toUpperCase()}
       </Text>
-      <Text style={styles.stopTitle}>{item.title}</Text>
+      <Text style={styles.stopTitle} numberOfLines={2} ellipsizeMode="tail">
+        {item.title}
+      </Text>
       <Text style={styles.stopMeta}>
         {[item.neighborhood, priceLabel(item.priceTier), ratingText(item.rating, item.ratingCount)]
           .filter(Boolean)
@@ -580,7 +644,7 @@ function StopRow({
         {item.bookingUrl ? (
           <Pressable
             accessibilityRole="button"
-            onPress={() => void open(item.bookingUrl as string)}
+            onPress={() => void openExternal(item.bookingUrl as string)}
             style={styles.linkBtn}
           >
             <ExternalLink size={12} color={colors.accent} strokeWidth={2.2} />
@@ -596,7 +660,7 @@ function StopRow({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Directions to ${item.title}`}
-          onPress={() => void open(directions)}
+          onPress={() => void openExternal(directions)}
           style={styles.linkBtn}
         >
           <Text style={styles.linkBtnText}>Directions</Text>
@@ -618,10 +682,7 @@ function StopRow({
           {alts === null ? (
             <ActivityIndicator size="small" color={colors.accent} />
           ) : alts.length === 0 ? (
-            <Text style={styles.noSite}>
-              Nothing new nearby fits this slot this week — you&apos;ve seen everything
-              that matches. Widen this day&apos;s neighborhoods or price to see more.
-            </Text>
+            <Text style={styles.noSite}>{NOTHING_NEW_COPY}</Text>
           ) : (
             alts.map((c) => (
               <Pressable
@@ -647,7 +708,7 @@ function StopRow({
       ) : null}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   panel: {
@@ -665,7 +726,20 @@ const styles = StyleSheet.create({
     fontSize: font.size.xl,
     letterSpacing: -0.3,
   },
+  holidayChip: {
+    alignSelf: 'flex-start',
+    paddingVertical: 2,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.pill,
+    marginTop: 2,
+  },
   holidayLabel: { fontSize: font.size.xs, fontWeight: font.weight.semibold, letterSpacing: 0.5 },
+  skeletonLine: {
+    height: 14,
+    width: '75%',
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceAlt,
+  },
   reshuffleBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -682,10 +756,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: spacing.xs,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.gridLine,
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
   },
+  prefsTogglePressed: { backgroundColor: colors.surfaceAlt },
   prefsToggleText: { color: colors.textMuted, fontSize: font.size.sm, flex: 1 },
   prefsBody: { gap: spacing.sm },
   prefsLabel: {
@@ -765,13 +844,20 @@ const styles = StyleSheet.create({
   swapBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, padding: 2 },
   swapText: { color: colors.textMuted, fontSize: font.size.xs, fontWeight: font.weight.medium },
   swapMenuGroups: { gap: 8, marginTop: 2 },
+  swapGroupHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    paddingVertical: 2,
+    marginBottom: 4,
+  },
   swapGroupLabel: {
     color: colors.textMuted,
     fontSize: 10,
     fontWeight: font.weight.bold,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
-    marginBottom: 4,
   },
   swapMenu: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   swapChip: {

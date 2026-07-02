@@ -39,17 +39,25 @@ export function candidateDuration(c: Candidate): number {
 
 // ---- Meal-time gating --------------------------------------------------------
 
-/** Minutes since midnight for the day's dining rhythms. */
+/** Minutes since midnight for the day's dining rhythms. Exported as the ONE
+ * source of truth for meal-time boundaries — the planner's meal-anchor gates
+ * derive from these, never from their own inline clock times. */
 const T = (hhmm: string) => toMinutes(hhmm);
-const COFFEE = { start: T('07:00'), end: T('17:00') };
-const BREAKFAST = { start: T('08:00'), end: T('11:00') };
-const BRUNCH = { start: T('09:30'), end: T('14:30') };
+export const COFFEE = { start: T('07:00'), end: T('17:00') };
+export const BREAKFAST = { start: T('08:00'), end: T('11:00') };
+export const BRUNCH = { start: T('09:30'), end: T('14:30') };
 // LUNCH starts where BREAKFAST ends so no start time falls between meal slots
 // (an 11:15 brunch table must count against the lunch cap, not slip through).
-const LUNCH = { start: T('11:00'), end: T('14:30') };
-const DINNER = { start: T('17:30'), end: T('21:30') };
-const LATE_NIGHT = { start: T('21:00'), end: T('23:59') };
-const DRINKS = { start: T('16:00'), end: T('23:59') };
+export const LUNCH = { start: T('11:00'), end: T('14:30') };
+export const DINNER = { start: T('17:30'), end: T('21:30') };
+export const LATE_NIGHT = { start: T('21:00'), end: T('23:59') };
+export const DRINKS = { start: T('16:00'), end: T('23:59') };
+
+// Meal-anchor targets: the preferred sit-down time + duration the planner
+// reserves when a window covers the meal. Lunch aims mid-slot (noon table),
+// dinner at the slot's open.
+export const LUNCH_ANCHOR = { start: T('12:00'), durationMin: 75 };
+export const DINNER_ANCHOR = { start: DINNER.start, durationMin: 90 };
 
 function inRange(min: number, r: { start: number; end: number }): boolean {
   return min >= r.start && min <= r.end;
@@ -176,7 +184,7 @@ export function filterToNeighborhoods<T extends { neighborhood?: string }>(
  */
 export function venueKey(name: string): string {
   const m = /\bat\s+(?:the\s+)?(.+)$/i.exec(name.trim());
-  const core = m ? m[1] : name;
+  const core = m?.[1] ?? name;
   return core
     .trim()
     .toLowerCase()
@@ -192,11 +200,20 @@ export function sameCategory(a: Candidate['kind'], b: Candidate['kind']): boolea
   return (food(a) && food(b)) || (drink(a) && drink(b)) || (doing(a) && doing(b));
 }
 
+// A cross-neighborhood walk connector's canonical length (minutes).
+export const WALK_CONNECTOR_MIN = 15;
+// Gaps up to this long are walked end to end (a 22-minute gap is just a
+// longer walk); anything larger keeps the canonical walk and books the
+// remainder as an explicit break, so every minute between stops is
+// attributed in the rendered schedule.
+export const MAX_WALK_ONLY_GAP = 25;
+
 /**
- * Strip walk/break rows and re-insert walk connectors between stops whenever
- * the neighborhood changes and there is at least a 15 minute gap. The single
- * source of truth for connectors: the planner runs it as a post-pass and the
- * swap flow reruns it after replacing a stop.
+ * Strip walk/break rows and re-insert connectors between stops whenever the
+ * neighborhood changes and there is at least a walk-sized gap: short gaps
+ * become one gap-spanning walk, longer gaps a walk plus a break covering the
+ * rest. The single source of truth for connectors: the planner runs it as a
+ * post-pass and the swap flow reruns it after replacing a stop.
  */
 export function rebuildConnectors(stops: PlanItem[]): PlanItem[] {
   const sorted = stops
@@ -206,14 +223,19 @@ export function rebuildConnectors(stops: PlanItem[]): PlanItem[] {
   let order = 0;
   for (let i = 0; i < sorted.length; i += 1) {
     const prev = i > 0 ? sorted[i - 1] : undefined;
-    const cur = sorted[i];
+    const cur = sorted[i]!;
+    const gap = prev ? toMinutes(cur.startTime) - toMinutes(prev.endTime) : 0;
     if (
       prev &&
       prev.neighborhood &&
       cur.neighborhood &&
       prev.neighborhood !== cur.neighborhood &&
-      toMinutes(cur.startTime) - toMinutes(prev.endTime) >= 15
+      gap >= WALK_CONNECTOR_MIN
     ) {
+      const walkEnd =
+        gap <= MAX_WALK_ONLY_GAP
+          ? toMinutes(cur.startTime)
+          : toMinutes(prev.endTime) + WALK_CONNECTOR_MIN;
       out.push({
         id: `walk-${order}`,
         order,
@@ -221,10 +243,23 @@ export function rebuildConnectors(stops: PlanItem[]): PlanItem[] {
         title: `Walk: ${prev.neighborhood} to ${cur.neighborhood}`,
         neighborhood: cur.neighborhood,
         startTime: prev.endTime,
-        endTime: fromMinutes(Math.min(toMinutes(prev.endTime) + 15, toMinutes(cur.startTime))),
+        endTime: fromMinutes(walkEnd),
         note: 'Short walk between stops.',
       });
       order += 1;
+      if (gap > MAX_WALK_ONLY_GAP) {
+        out.push({
+          id: `break-${order}`,
+          order,
+          kind: 'break',
+          title: `Break in ${cur.neighborhood}`,
+          neighborhood: cur.neighborhood,
+          startTime: fromMinutes(walkEnd),
+          endTime: cur.startTime,
+          note: 'Downtime before the next stop.',
+        });
+        order += 1;
+      }
     }
     out.push({ ...cur, order });
     order += 1;

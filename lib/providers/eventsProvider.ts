@@ -33,6 +33,12 @@ export interface ProviderResult {
   live: boolean;
   /** Non-null when a live call failed and we fell back. */
   error?: string;
+  /**
+   * Set when the ticketed live sources responded fine but had zero in-area
+   * events, so the curated seed events were substituted — distinguishes
+   * "live returned nothing nearby" from a live failure (which sets `error`).
+   */
+  note?: 'live-no-area-matches';
 }
 
 const TM_URL = 'https://app.ticketmaster.com/discovery/v2/events.json';
@@ -52,8 +58,33 @@ function tmPriceTier(min: number | undefined): PriceTier | undefined {
   return 4;
 }
 
+// The Discovery v2 fields actually read — compile-time documentation, not
+// runtime validation (hence optional everywhere; the mapper stays defensive).
+interface TicketmasterVenue {
+  name?: string;
+  address?: { line1?: string };
+  city?: { name?: string };
+  location?: { latitude?: string; longitude?: string };
+}
+
+interface TicketmasterClassification {
+  segment?: { name?: string };
+  genre?: { name?: string };
+}
+
+interface TicketmasterEvent {
+  id?: string;
+  name?: string;
+  url?: string;
+  info?: string;
+  dates?: { start?: { localDate?: string; localTime?: string } };
+  priceRanges?: { min?: number }[];
+  classifications?: TicketmasterClassification[];
+  _embedded?: { venues?: TicketmasterVenue[] };
+}
+
 /** Map Ticketmaster classifications onto the app's interest tags. */
-function tmTags(classification: any): string[] {
+function tmTags(classification: TicketmasterClassification | undefined): string[] {
   const segment: string = classification?.segment?.name ?? '';
   const genre: string = classification?.genre?.name ?? '';
   if (segment === 'Music') return ['live music'];
@@ -65,7 +96,8 @@ function tmTags(classification: any): string[] {
 }
 
 /** Map one Discovery event into a Candidate, or null if unusable. */
-function tmToCandidate(e: any, date: string): Candidate | null {
+function tmToCandidate(e: TicketmasterEvent, date: string): Candidate | null {
+  if (!e?.id || !e?.name) return null;
   // Only same-day events with a concrete local start time are schedulable.
   if (e?.dates?.start?.localDate !== date) return null;
   const localTime: string | undefined = e?.dates?.start?.localTime;
@@ -76,8 +108,8 @@ function tmToCandidate(e: any, date: string): Candidate | null {
   const venue = e?._embedded?.venues?.[0];
   // Parse-then-validate: a malformed coordinate string must yield undefined
   // (not NaN), so Directions falls back to the name+area search as designed.
-  const latRaw = Number.parseFloat(venue?.location?.latitude);
-  const lngRaw = Number.parseFloat(venue?.location?.longitude);
+  const latRaw = Number.parseFloat(venue?.location?.latitude ?? '');
+  const lngRaw = Number.parseFloat(venue?.location?.longitude ?? '');
   const lat = Number.isFinite(latRaw) ? latRaw : undefined;
   const lng = Number.isFinite(lngRaw) ? lngRaw : undefined;
   // Snap to a supported neighborhood; anything else gets the honest
@@ -133,7 +165,7 @@ async function fetchTicketmaster(date: string): Promise<ProviderResult> {
       sort: 'date,asc',
     });
     const json = await fetchJson(`${TM_URL}?${params.toString()}`, undefined, 8000);
-    const events: any[] = json?._embedded?.events ?? [];
+    const events: TicketmasterEvent[] = json?._embedded?.events ?? [];
     const seen = new Set<string>();
     const candidates: Candidate[] = [];
     for (const e of events) {
@@ -192,6 +224,12 @@ export const eventsProvider = {
       (c) => c.neighborhood !== OUTSIDE_AREA_LABEL,
     );
     const eventsBucket = ticketed.length > 0 ? ticketed : seedFixedEvents;
+    // At least one ticketed source answered live yet nothing landed in-area:
+    // flag it so the UI can tell "nothing nearby" apart from "live broken".
+    const note =
+      (tm.live || sg.live) && ticketed.length === 0
+        ? ('live-no-area-matches' as const)
+        : undefined;
 
     // The civic/park feeds (no key required) and the curated activities are
     // pure ADDITIONS on top, never replaced — they're what fills the "Do"
@@ -205,6 +243,6 @@ export const eventsProvider = {
 
     const live = tm.live || sg.live || od.live || pk.live;
     const error = [tm.error, sg.error, od.error, pk.error].filter(Boolean).join('; ') || undefined;
-    return { candidates, live, error };
+    return { candidates, live, error, note };
   },
 };

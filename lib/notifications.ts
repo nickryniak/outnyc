@@ -56,23 +56,31 @@ function shouldNotify(item: PlanItem): boolean {
 
 /**
  * Schedule local nudges for each timed stop in a plan. Returns the count
- * scheduled. Never throws; logs and returns what it managed to schedule.
+ * scheduled plus how many stops were skipped because they start within
+ * LEAD_MIN (the nudge would land in the past). Never throws; logs and
+ * returns what it managed to schedule.
  */
-export async function schedulePlanNotifications(plan: Plan): Promise<number> {
+export async function schedulePlanNotifications(
+  plan: Plan,
+): Promise<{ scheduled: number; skipped: number }> {
   const granted = await ensureNotificationPermission();
-  if (!granted) return 0;
+  if (!granted) return { scheduled: 0, skipped: 0 };
 
   // Clear any prior nudges for this plan first (idempotent re-locking).
   await cancelPlanNotifications(plan.id);
 
   let scheduled = 0;
+  let skipped = 0;
   const now = Date.now();
 
   for (const item of plan.items) {
     if (!shouldNotify(item)) continue;
     const start = nyDateTimeToLocalDate(plan.date, item.startTime);
     const fireAt = new Date(start.getTime() - LEAD_MIN * 60 * 1000);
-    if (fireAt.getTime() <= now) continue; // don't schedule in the past
+    if (fireAt.getTime() <= now) {
+      skipped += 1; // starts too soon — the nudge would fire in the past
+      continue;
+    }
 
     try {
       await Notifications.scheduleNotificationAsync({
@@ -93,7 +101,7 @@ export async function schedulePlanNotifications(plan: Plan): Promise<number> {
       console.warn('[notifications] failed to schedule for', item.id, err);
     }
   }
-  return scheduled;
+  return { scheduled, skipped };
 }
 
 /** Cancel all scheduled nudges for a plan. */

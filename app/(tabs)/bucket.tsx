@@ -5,14 +5,25 @@
 // (numbered or one-per-line) to bulk-import; each OPEN item becomes a candidate.
 // =============================================================================
 
+import { useHeaderHeight } from '@react-navigation/elements';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Body, Button, Caption, Eyebrow, Heading, LoadingView } from '../../components/ui';
+import { Button, Caption, Eyebrow, Heading, LoadingView } from '../../components/ui';
 import { confirmDestructive } from '../../lib/confirm';
 import { useStore } from '../../lib/store';
 import { colors, font, radius, spacing } from '../../lib/theme';
+import { weekdayLabel } from '../../lib/time';
 import type { BucketItem } from '../../lib/types';
 
 // ---- Paste parsing ----------------------------------------------------------
@@ -29,8 +40,8 @@ function parseList(text: string): string[] {
 
 /** Split "Title - note" into a title + optional note. */
 function splitTitleNote(line: string): { title: string; note?: string } {
-  const m = line.split(/\s+[-–—]\s+/);
-  if (m.length > 1) return { title: m[0].trim(), note: m.slice(1).join('. ').trim() };
+  const [first, ...rest] = line.split(/\s+[-–—]\s+/);
+  if (first && rest.length > 0) return { title: first.trim(), note: rest.join('. ').trim() };
   return { title: line };
 }
 
@@ -61,8 +72,10 @@ function toInputs(text: string) {
 
 export default function BucketScreen() {
   const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
   const loadStatus = useStore((s) => s.loadStatus);
   const bucketList = useStore((s) => s.bucketList);
+  const plansByKey = useStore((s) => s.plansByKey);
   const addBucketItems = useStore((s) => s.addBucketItems);
   const toggleBucketDone = useStore((s) => s.toggleBucketDone);
   const removeBucketItem = useStore((s) => s.removeBucketItem);
@@ -74,6 +87,20 @@ export default function BucketScreen() {
     const sorted = [...bucketList].sort((a, b) => a.sortOrder - b.sortOrder);
     return { open: sorted.filter((b) => !b.done), done: sorted.filter((b) => b.done) };
   }, [bucketList]);
+
+  // Bucket item id -> earliest date it's scheduled on. Bucket-derived stops
+  // carry the item's id as `bucketItemId` (planner + swaps), so that's the link.
+  const scheduledDateById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const p of Object.values(plansByKey)) {
+      for (const it of p.items) {
+        if (!it.bucketItemId) continue;
+        const earliest = map[it.bucketItemId];
+        if (!earliest || p.date < earliest) map[it.bucketItemId] = p.date;
+      }
+    }
+    return map;
+  }, [plansByKey]);
 
   if (loadStatus === 'loading' || loadStatus === 'idle') {
     return <LoadingView label="Loading your list…" />;
@@ -96,71 +123,81 @@ export default function BucketScreen() {
   }
 
   return (
-    <ScrollView
+    <KeyboardAvoidingView
       style={styles.container}
-      contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xxl }]}
-      keyboardShouldPersistTaps="handled"
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={headerHeight}
     >
-      <Eyebrow>Your list</Eyebrow>
-      <Caption muted>
-        Paste a whole list (numbered or one per line). The planner weaves open
-        items into your week when they fit.
-      </Caption>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xxl }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Eyebrow>Your list</Eyebrow>
+        <Caption muted>
+          Paste a whole list (numbered or one per line). The planner weaves open
+          items into your week when they fit.
+        </Caption>
 
-      <View style={styles.importer}>
-        <TextInput
-          value={draft}
-          onChangeText={setDraft}
-          placeholder={'e.g.\n1. Shakespeare in the Park\n2. Jazz club\n3. Rooftop party'}
-          placeholderTextColor={colors.textFaint}
-          style={styles.input}
-          multiline
-          textAlignVertical="top"
-        />
-        <Button
-          label={parsedCount > 1 ? `Add ${parsedCount} items` : 'Add item'}
-          onPress={onAdd}
-          disabled={parsedCount === 0}
-        />
-      </View>
-
-      <Heading>Open</Heading>
-      {open.length === 0 ? (
-        <Caption muted>Nothing open yet. Paste a few ideas above.</Caption>
-      ) : (
-        open.map((item) => (
-          <BucketRow
-            key={item.id}
-            item={item}
-            onToggle={() => void toggleBucketDone(item.id)}
-            onRemove={() => confirmRemove(item)}
+        <View style={styles.importer}>
+          <TextInput
+            value={draft}
+            onChangeText={setDraft}
+            placeholder={'e.g.\n1. Shakespeare in the Park\n2. Jazz club\n3. Rooftop party'}
+            placeholderTextColor={colors.textFaint}
+            style={styles.input}
+            multiline
+            textAlignVertical="top"
           />
-        ))
-      )}
+          <Button
+            label={parsedCount > 1 ? `Add ${parsedCount} items` : 'Add item'}
+            onPress={onAdd}
+            disabled={parsedCount === 0}
+          />
+        </View>
 
-      {done.length > 0 ? (
-        <View style={styles.doneSection}>
-          <Heading>Done</Heading>
-          {done.map((item) => (
+        <Heading>Open</Heading>
+        {open.length === 0 ? (
+          <Caption muted>Nothing open yet. Paste a few ideas above.</Caption>
+        ) : (
+          open.map((item) => (
             <BucketRow
               key={item.id}
               item={item}
+              scheduledDate={scheduledDateById[item.id]}
               onToggle={() => void toggleBucketDone(item.id)}
               onRemove={() => confirmRemove(item)}
             />
-          ))}
-        </View>
-      ) : null}
-    </ScrollView>
+          ))
+        )}
+
+        {done.length > 0 ? (
+          <View style={styles.doneSection}>
+            <Heading>Done</Heading>
+            {done.map((item) => (
+              <BucketRow
+                key={item.id}
+                item={item}
+                onToggle={() => void toggleBucketDone(item.id)}
+                onRemove={() => confirmRemove(item)}
+              />
+            ))}
+          </View>
+        ) : null}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 function BucketRow({
   item,
+  scheduledDate,
   onToggle,
   onRemove,
 }: {
   item: BucketItem;
+  /** Date this item is already on a plan for, if any. */
+  scheduledDate?: string;
   onToggle: () => void;
   onRemove: () => void;
 }) {
@@ -189,6 +226,13 @@ function BucketRow({
           </Text>
         ) : null}
         {item.note ? <Caption muted>{item.note}</Caption> : null}
+        {scheduledDate ? (
+          <View style={styles.scheduledChip}>
+            <Text style={styles.scheduledChipText}>
+              On calendar · {weekdayLabel(scheduledDate)}
+            </Text>
+          </View>
+        ) : null}
       </View>
       <Pressable
         accessibilityRole="button"
@@ -205,6 +249,7 @@ function BucketRow({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  scroll: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.md },
   importer: { gap: spacing.sm },
   input: {
@@ -251,5 +296,18 @@ const styles = StyleSheet.create({
   checkMark: { color: colors.onArt, fontSize: 14, fontWeight: font.weight.bold },
   remove: { padding: spacing.xs },
   removeGlyph: { color: colors.textFaint, fontSize: font.size.md },
+  scheduledChip: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    backgroundColor: colors.secondarySoft,
+    marginTop: 2,
+  },
+  scheduledChipText: {
+    color: colors.secondary,
+    fontSize: font.size.xs,
+    fontWeight: font.weight.semibold,
+  },
   doneSection: { gap: spacing.md, marginTop: spacing.lg, opacity: 0.75 },
 });

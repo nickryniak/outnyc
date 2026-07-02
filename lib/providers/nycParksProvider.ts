@@ -18,7 +18,7 @@
 import { nearestNeighborhood, OUTSIDE_AREA_LABEL } from '../geo';
 import type { Candidate } from '../types';
 import type { ProviderResult } from './eventsProvider';
-import { fetchJson } from './net';
+import { fetchJson, isOnline } from './net';
 
 const DATASET_URL = 'https://data.cityofnewyork.us/resource/w3wp-dpdi.json';
 
@@ -53,16 +53,30 @@ function parseAmPm(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const m = /^(\d{1,2}):(\d{2})\s*(am|pm)$/i.exec(raw.trim());
   if (!m) return null;
-  let h = parseInt(m[1], 10);
-  const min = m[2];
-  const period = m[3].toLowerCase();
+  let h = parseInt(m[1]!, 10);
+  const min = m[2]!;
+  const period = m[3]!.toLowerCase();
   if (period === 'pm' && h !== 12) h += 12;
   if (period === 'am' && h === 12) h = 0;
   return `${String(h).padStart(2, '0')}:${min}`;
 }
 
-function toCandidate(row: any): Candidate | null {
-  const name: unknown = row?.title;
+/** The dataset fields actually read — compile-time documentation, not runtime validation. */
+interface NycParksEventRow {
+  guid?: string;
+  title?: string;
+  categories?: string;
+  starttime?: string;
+  endtime?: string;
+  coordinates?: string;
+  location?: string;
+  parknames?: string;
+  description?: string;
+  link?: { url?: string };
+}
+
+function toCandidate(row: NycParksEventRow): Candidate | null {
+  const name = row?.title;
   const categories: string = typeof row?.categories === 'string' ? row.categories : '';
   if (typeof name !== 'string') return null;
   // Cancelled events stay in the feed with a "CANCELED:"/"CANCELLED:" title
@@ -78,9 +92,9 @@ function toCandidate(row: any): Candidate | null {
 
   let lat: number | undefined;
   let lng: number | undefined;
-  const coordStr: unknown = row?.coordinates;
+  const coordStr = row?.coordinates;
   if (typeof coordStr === 'string') {
-    const [latS, lngS] = coordStr.split(',').map((s) => s.trim());
+    const [latS = '', lngS = ''] = coordStr.split(',').map((s) => s.trim());
     const latN = parseFloat(latS);
     const lngN = parseFloat(lngS);
     if (Number.isFinite(latN) && Number.isFinite(lngN)) {
@@ -90,7 +104,7 @@ function toCandidate(row: any): Candidate | null {
   }
   const neighborhood = lat != null && lng != null ? nearestNeighborhood(lat, lng) : OUTSIDE_AREA_LABEL;
 
-  const guid: unknown = row?.guid;
+  const guid = row?.guid;
   return {
     id: `pk-${guid ?? name}`,
     name,
@@ -116,6 +130,11 @@ function toCandidate(row: any): Candidate | null {
 
 export const nycParksProvider = {
   async fetchEvents(date: string): Promise<ProviderResult> {
+    // This key-free feed is otherwise always attempted; when offline, return
+    // the empty fallback immediately instead of eating the full fetch timeout.
+    if (!(await isOnline())) {
+      return { candidates: [], live: false, error: 'offline' };
+    }
     try {
       const where = `startdate='${date}T00:00:00.000'`;
       const url = `${DATASET_URL}?$where=${encodeURIComponent(where)}&$limit=200`;
