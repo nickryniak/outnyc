@@ -52,12 +52,24 @@ function mapsUrl(item: PlanItem): string | null {
   return null;
 }
 
+const PRESETS: { label: string; start: string; end: string }[] = [
+  { label: 'Morning', start: '09:00', end: '12:00' },
+  { label: 'Afternoon', start: '12:00', end: '17:00' },
+  { label: 'Evening', start: '18:00', end: '23:00' },
+  { label: 'All day', start: '10:00', end: '23:00' },
+];
+
 export function DayPanel({ date, onClose }: { date: string; onClose: () => void }) {
   const router = useRouter();
   const profile = useStore((s) => s.profile);
-  const windows = useStore((s) => s.availabilityByDate[date]?.windows ?? []);
+  // Select the availability RECORD (a stable reference), then derive the array
+  // in render — returning `?? []` straight from the selector makes a new array
+  // every call and sends zustand's snapshot check into an infinite loop.
+  const availability = useStore((s) => s.availabilityByDate[date]);
+  const windows = availability?.windows ?? [];
   const dayPrefs = useStore((s) => s.dayPrefsByDate[date]);
   const reshuffleDay = useStore((s) => s.reshuffleDay);
+  const setAvailability = useStore((s) => s.setAvailability);
   const holiday = holidayFor(date);
 
   const [busy, setBusy] = useState(false);
@@ -87,20 +99,22 @@ export function DayPanel({ date, onClose }: { date: string; onClose: () => void 
             <Text style={[styles.holidayLabel, { color: holiday.color }]}>{holiday.name}</Text>
           ) : null}
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Reshuffle this day"
-          disabled={busy || windows.length === 0}
-          onPress={() => void onReshuffle()}
-          style={[styles.reshuffleBtn, (busy || windows.length === 0) && { opacity: 0.5 }]}
-        >
-          {busy ? (
-            <ActivityIndicator size="small" color={colors.onArt} />
-          ) : (
-            <RefreshCw size={13} color={colors.onArt} strokeWidth={2.2} />
-          )}
-          <Text style={styles.reshuffleText}>Reshuffle</Text>
-        </Pressable>
+        {windows.length > 0 ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Reshuffle this day"
+            disabled={busy}
+            onPress={() => void onReshuffle()}
+            style={[styles.reshuffleBtn, busy && { opacity: 0.6 }]}
+          >
+            {busy ? (
+              <ActivityIndicator size="small" color={colors.onArt} />
+            ) : (
+              <RefreshCw size={13} color={colors.onArt} strokeWidth={2.2} />
+            )}
+            <Text style={styles.reshuffleText}>Reshuffle</Text>
+          </Pressable>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close day panel"
@@ -148,9 +162,23 @@ export function DayPanel({ date, onClose }: { date: string; onClose: () => void 
 
       {/* Itineraries per window */}
       {windows.length === 0 ? (
-        <Text style={styles.emptyText}>
-          No free time on this day yet. Tap or drag hours in the calendar above.
-        </Text>
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyText}>
+            No free time yet. Tap or drag hours in the calendar above, or add a block:
+          </Text>
+          <View style={styles.presetWrap}>
+            {PRESETS.map((p) => (
+              <Pressable
+                key={p.label}
+                accessibilityRole="button"
+                onPress={() => void setAvailability(date, [{ start: p.start, end: p.end }])}
+                style={styles.preset}
+              >
+                <Text style={styles.presetText}>{p.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
       ) : (
         windows.map((w) => <WindowItinerary key={`${w.start}-${w.end}`} date={date} window={w} />)
       )}
@@ -525,7 +553,18 @@ const styles = StyleSheet.create({
   resetLink: { paddingVertical: spacing.xs },
   resetLinkText: { color: colors.accent, fontSize: font.size.sm },
 
+  emptyBox: { gap: spacing.sm },
   emptyText: { color: colors.textMuted, fontSize: font.size.sm, lineHeight: 20 },
+  presetWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  preset: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.free,
+    backgroundColor: colors.freeSoft,
+  },
+  presetText: { color: colors.free, fontSize: font.size.sm, fontWeight: font.weight.semibold },
   remindersLink: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 },
   remindersLinkText: { color: colors.accent, fontSize: font.size.sm, fontWeight: font.weight.medium },
 

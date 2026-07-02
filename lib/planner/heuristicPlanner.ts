@@ -42,6 +42,9 @@ import {
 const GAP_MIN = 15;
 // Most bars a single window will schedule.
 const MAX_BARS = 2;
+// Longest single visit for a fixed/all-day event, so a market does not eat a
+// whole window.
+const MAX_FIXED_VISIT = 150;
 
 function withinPrice(tier: PriceTier | undefined, price: PriceRange): boolean {
   if (tier == null) return true; // unknown price never excludes
@@ -81,9 +84,11 @@ function rankCandidates(candidates: Candidate[], req: PlanRequest, seed: number)
   return candidates
     .map((candidate) => {
       let score = 0;
-      // Neighborhood match is a strong soft preference.
-      if (candidate.neighborhood && nbset.has(candidate.neighborhood.toLowerCase())) {
-        score += 5;
+      // Neighborhood: a strong preference for a match, and a real penalty for a
+      // stop in a neighborhood the user did NOT pick, so a day set to Manhattan
+      // does not casually schedule a Brooklyn stop when local options exist.
+      if (candidate.neighborhood) {
+        score += nbset.has(candidate.neighborhood.toLowerCase()) ? 6 : -3;
       }
       // Interest overlap.
       score += overlap(candidate.tags, req.interests) * 2;
@@ -113,6 +118,28 @@ function rankCandidates(candidates: Candidate[], req: PlanRequest, seed: number)
     });
 }
 
+/**
+ * Rough real-world duration (minutes) for an open-ended bucket wish, inferred
+ * from its title/tags, so "Walk all of Manhattan" is not scheduled as a tidy
+ * 75-minute slot. Big-day wishes get big durations and therefore only land when
+ * a window is actually long enough for them.
+ */
+function estimateBucketDuration(title: string, tags: string[]): number {
+  const t = title.toLowerCase();
+  if (/\ball of\b|entire|marathon|all day|whole (day|city|island)/.test(t)) return 300;
+  if (/beach|island|hike|kayak|bike|greenway|ferry|rockaway|governors|day trip/.test(t)) return 210;
+  if (/museum|gallery|tour|exhibit|botanical|garden|\bzoo\b|aquarium/.test(t)) return 120;
+  if (/show|concert|jazz|comedy|movie|film|broadway|play|opera|\bsnl\b|stand-?up|game|match/.test(t)) {
+    return 150;
+  }
+  if (/brunch|dinner|lunch|breakfast/.test(t) || tags.includes('food')) return 90;
+  if (/coffee|drinks|cocktail|rooftop|\bbar\b/.test(t) || tags.includes('bar')) return 75;
+  if (/walk|stroll|wander|bridge|park/.test(t) || tags.includes('walk') || tags.includes('outdoors')) {
+    return 90;
+  }
+  return 90;
+}
+
 /** Convert an OPEN bucket item into a pseudo-candidate the packer can place. */
 function bucketToCandidate(b: BucketItem): Candidate {
   return {
@@ -121,7 +148,7 @@ function bucketToCandidate(b: BucketItem): Candidate {
     kind: 'bucket',
     neighborhood: b.neighborhood,
     priceTier: b.priceTier,
-    durationMin: 75,
+    durationMin: estimateBucketDuration(b.title, b.tags),
     description: b.note ?? 'One of your bucket-list picks.',
     tags: b.tags,
   };
@@ -235,10 +262,32 @@ export class HeuristicPlanner implements Planner {
       toMinutes(c.endTime as string) > winStart &&
       toMinutes(c.startTime as string) < winEnd;
 
-    const fixed = preference
-      .filter(isFixed)
-      .sort((a, b) => toMinutes(a.startTime as string) - toMinutes(b.startTime as string));
-    const flexible = preference.filter((c) => !hasTimes(c));
+    // Meal anchors: if the window covers a mealtime, reserve a restaurant so a
+    // night out always includes dinner (and a midday plan includes lunch),
+    // instead of two fixed events crowding food out. Anchors are synthetic
+    // fixed stops; the packer places them ahead of same-time events.
+    const restaurants = rankedPlaces.map((s) => s.candidate).filter((c) => c.kind === 'restaurant');
+    const anchorUsed = new Set<string>();
+    const anchors: Candidate[] = [];
+    const addAnchor = (centerMin: number, dur: number) => {
+      const start = Math.max(winStart, centerMin);
+      if (start + dur > winEnd) return;
+      const cand = restaurants.find((c) => !anchorUsed.has(c.id) && allowedStart(c, start));
+      if (!cand) return;
+      anchorUsed.add(cand.id);
+      anchors.push({ ...cand, startTime: fromMinutes(start), endTime: fromMinutes(start + dur) });
+    };
+    if (winStart < toMinutes('14:00') && winEnd > toMinutes('12:00')) addAnchor(toMinutes('12:00'), 75);
+    if (winStart < toMinutes('21:00') && winEnd > toMinutes('17:30')) addAnchor(toMinutes('17:30'), 90);
+    const anchorIds = new Set(anchors.map((a) => a.id));
+
+    const fixed = [...preference.filter(isFixed), ...anchors].sort((a, b) => {
+      const d = toMinutes(a.startTime as string) - toMinutes(b.startTime as string);
+      if (d !== 0) return d;
+      // On a tie, the meal anchor is placed first so it is not crowded out.
+      return (anchorIds.has(a.id) ? 0 : 1) - (anchorIds.has(b.id) ? 0 : 1);
+    });
+    const flexible = preference.filter((c) => !hasTimes(c) && !anchorIds.has(c.id));
 
     const items: PlanItem[] = [];
     let cursor = winStart;
@@ -322,7 +371,9 @@ export class HeuristicPlanner implements Planner {
     // the last event, fill to the end of the window.
     for (const ev of fixed) {
       const evS = Math.max(toMinutes(ev.startTime as string), winStart);
-      const evE = Math.min(toMinutes(ev.endTime as string), winEnd);
+      // Cap a single visit so an all-day event (a 7-hour flea market) does not
+      // swallow the whole window and crowd everything else out.
+      const evE = Math.min(toMinutes(ev.endTime as string), winEnd, evS + MAX_FIXED_VISIT);
       if (evE - evS < 20) continue; // too little of it left to be worth going
       if (evS < cursor) continue; // no room before this event; skip it
       fillUntil(evS, true);

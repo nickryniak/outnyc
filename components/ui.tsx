@@ -85,9 +85,12 @@ export function Button({
         variant === 'primary' && styles.btnPrimary,
         variant === 'secondary' && styles.btnSecondary,
         variant === 'ghost' && styles.btnGhost,
+        // A disabled button reads as a neutral, inert control rather than a
+        // faded-out version of the accent (which looked broken).
         isDisabled && styles.btnDisabled,
         pressed && !isDisabled && styles.btnPressed,
         style,
+        isDisabled && styles.btnDisabledOverride,
       ]}
     >
       {loading ? (
@@ -98,6 +101,7 @@ export function Button({
             styles.btnLabel,
             variant === 'primary' && styles.btnLabelPrimary,
             variant === 'ghost' && styles.btnLabelGhost,
+            isDisabled && styles.btnLabelDisabled,
           ]}
         >
           {label}
@@ -248,7 +252,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.transparent,
   },
   btnDisabled: {
-    opacity: 0.45,
+    opacity: 1,
+  },
+  // Applied last so it wins over the variant fill/border.
+  btnDisabledOverride: {
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 0,
+  },
+  btnLabelDisabled: {
+    color: colors.textFaint,
   },
   btnPressed: {
     opacity: 0.85,

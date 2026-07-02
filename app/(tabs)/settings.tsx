@@ -183,6 +183,17 @@ export default function SettingsScreen() {
           style={styles.spaced}
         />
       </Card>
+
+      <Card>
+        <Heading>About OutNYC</Heading>
+        <Caption muted>Your night out, planned. Made for New York City.</Caption>
+        <Button
+          label="View intro"
+          variant="ghost"
+          onPress={() => router.push('/welcome')}
+          style={styles.spaced}
+        />
+      </Card>
     </ScrollView>
   );
 }

@@ -65,13 +65,13 @@ export default function WeekScreen() {
   return (
     <View style={styles.container}>
       {/* Header with subtle skyline */}
-      <View style={[styles.header, { height: 88 + insets.top }]}>
-        <Skyline variant="evening" height={88 + insets.top} />
+      <View style={[styles.header, { height: 62 + insets.top }]}>
+        <Skyline variant="evening" height={62 + insets.top} />
         <LinearGradient
           colors={['rgba(18,14,10,0.1)', 'rgba(18,14,10,0.55)']}
           style={StyleSheet.absoluteFill}
         />
-        <View style={[styles.headerText, { top: insets.top + spacing.sm }]}>
+        <View style={[styles.headerText, { top: insets.top + 4 }]}>
           <Text style={styles.headerEyebrow}>WEEK OF</Text>
           <View style={styles.headerRow}>
             <Text style={styles.headerTitle}>{weekRangeLabel(monday)}</Text>
@@ -107,7 +107,8 @@ export default function WeekScreen() {
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xxl }]}
       >
         <Caption muted>
-          Tap the hours you are free, or drag a block by its edges. Long-press removes it.
+          Tap an hour to add free time, or drag down a day to paint a range. Tap
+          the pin under a day to set its neighborhood.
         </Caption>
 
         <WeekGrid
@@ -155,13 +156,13 @@ const styles = StyleSheet.create({
   headerTitle: {
     color: colors.onArt,
     fontFamily: font.family.display,
-    fontSize: font.size.xxl,
-    letterSpacing: -0.5,
+    fontSize: font.size.xl,
+    letterSpacing: -0.4,
   },
   weekNav: { flexDirection: 'row', gap: spacing.xs },
   navBtn: {
-    width: 32,
-    height: 32,
+    width: 30,
+    height: 30,
     borderRadius: radius.pill,
     backgroundColor: 'rgba(251,247,236,0.16)',
     alignItems: 'center',

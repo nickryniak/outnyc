@@ -2,18 +2,22 @@
 // OutNYC — week calendar grid (components/WeekGrid.tsx)
 // =============================================================================
 // The heart of the app: a Mon-Sun hour grid where
-//   - tapping an empty hour adds a green "free" block
-//   - green blocks drag on both edges (start/end) and as a whole; long-press
-//     removes them
-//   - once a day is planned, navy plan blocks tile INSIDE the free window at
-//     their true time/size; leftover free time stays visible as green
+//   - each day column header carries a neighborhood button (tap to pick that
+//     day's NYC neighborhoods)
+//   - tapping an empty hour adds a one-hour free block; DRAGGING down an empty
+//     column paints a range in one gesture
+//   - green blocks resize from either edge; long-press removes them
+//   - once a day is planned, plan blocks tile INSIDE the free window at their
+//     true time/size (kind-colored), leftover free time stays green
 //   - tapping a plan block or a day header selects the day (expanded below)
 // Hairline rules, near-flat corners, restrained palette.
 // =============================================================================
 
+import { MapPin } from 'lucide-react-native';
 import { useMemo, useRef, useState } from 'react';
 import {
   GestureResponderEvent,
+  Modal,
   PanResponder,
   PanResponderGestureState,
   Pressable,
@@ -22,15 +26,16 @@ import {
   View,
 } from 'react-native';
 
+import { NEIGHBORHOODS } from '../lib/constants';
 import { holidayFor } from '../lib/holidays';
-import { useStore } from '../lib/store';
-import { colors, font, radius } from '../lib/theme';
-import { applyBlockDrag, toMinutes } from '../lib/time';
+import { resolvePrefs, useStore } from '../lib/store';
+import { colors, font, kindColor, radius, spacing } from '../lib/theme';
+import { applyBlockDrag, monthDayLabel, toMinutes, weekdayLabel } from '../lib/time';
 import type { Availability, Plan, PlanItem, TimeWindow } from '../lib/types';
 
 export const DAY_START_H = 9;
 export const DAY_END_H = 23;
-export const HOUR_PX = 30;
+export const HOUR_PX = 32;
 const HOURS = Array.from({ length: DAY_END_H - DAY_START_H }, (_, i) => i + DAY_START_H);
 const TRACK_H = (DAY_END_H - DAY_START_H) * HOUR_PX;
 const MIN_BLOCK_MIN = 60;
@@ -40,61 +45,62 @@ function hourLabel(h: number): string {
   return h < 12 ? `${h}a` : `${h - 12}p`;
 }
 
-/** Minutes-from-day-start -> px offset in the track. */
+/** Minutes-from-midnight -> px offset in the track. */
 function minToPx(min: number): number {
   return ((min - DAY_START_H * 60) / 60) * HOUR_PX;
 }
 
-function pxToMin(px: number): number {
-  return DAY_START_H * 60 + (px / HOUR_PX) * 60;
-}
-
-function snap(min: number): number {
-  return Math.round(min / 60) * 60;
-}
-
-function clampMin(min: number): number {
-  return Math.max(DAY_START_H * 60, Math.min(DAY_END_H * 60, min));
+/** Column-relative px -> whole hour (floored, clamped to the visible day). */
+function pxToHour(relY: number): number {
+  const h = DAY_START_H + Math.floor(relY / HOUR_PX);
+  return Math.max(DAY_START_H, Math.min(DAY_END_H - 1, h));
 }
 
 interface DragState {
-  edge: 'top' | 'bottom' | 'move';
+  edge: 'top' | 'bottom';
   dy: number;
 }
 
-// ---- One draggable green availability block ---------------------------------
+/** Static green fill drawn BEHIND the plan blocks so leftover free time shows
+ *  and planned time reads as navy on top. Tap selects the day for editing. */
+function FreeFill({ window: w, onSelect }: { window: TimeWindow; onSelect: () => void }) {
+  const top = minToPx(toMinutes(w.start));
+  const height = minToPx(toMinutes(w.end)) - top;
+  return (
+    <Pressable
+      accessibilityLabel={`Free ${w.start} to ${w.end}`}
+      onPress={onSelect}
+      style={[styles.freeFill, { top, height }]}
+    />
+  );
+}
 
-function FreeBlock({
+// ---- Editable green block (selected day only), drawn ON TOP of plan blocks --
+
+function FreeBlockEditor({
   window: w,
-  elevated,
   onCommit,
   onRemove,
   onSelect,
   onDragActive,
 }: {
   window: TimeWindow;
-  /** Raise above plan blocks (the selected day) so edges stay draggable. */
-  elevated: boolean;
   onCommit: (startMin: number, endMin: number) => void;
   onRemove: () => void;
   onSelect: () => void;
   onDragActive: (active: boolean) => void;
 }) {
   const [drag, setDrag] = useState<DragState | null>(null);
-
   const startMin = toMinutes(w.start);
   const endMin = toMinutes(w.end);
 
-  // PanResponders are created ONCE per mount, so their callbacks must read
-  // everything through this ref (updated every render) — otherwise a drag
-  // after any prop change would commit through a stale closure.
-  const live = useRef({ startMin, endMin, onCommit, onRemove, onSelect, onDragActive });
-  live.current = { startMin, endMin, onCommit, onRemove, onSelect, onDragActive };
+  // PanResponders are created once per mount, so read live values via a ref.
+  const live = useRef({ startMin, endMin, onCommit, onDragActive });
+  live.current = { startMin, endMin, onCommit, onDragActive };
 
-  const makeResponder = (edge: DragState['edge']) =>
+  const makeEdge = (edge: DragState['edge']) =>
     PanResponder.create({
-      onStartShouldSetPanResponder: () => edge !== 'move',
-      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dy) > 6,
+      onStartShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
         setDrag({ edge, dy: 0 });
         live.current.onDragActive(true);
@@ -103,18 +109,13 @@ function FreeBlock({
         setDrag({ edge, dy: g.dy });
       },
       onPanResponderRelease: (_e, g) => {
-        const dy = g.dy;
         setDrag(null);
         live.current.onDragActive(false);
-        if (edge === 'move' && Math.abs(dy) < 6) {
-          live.current.onSelect();
-          return;
-        }
         const { start, end } = applyBlockDrag(
           edge,
           live.current.startMin,
           live.current.endMin,
-          (dy / HOUR_PX) * 60,
+          (g.dy / HOUR_PX) * 60,
           DAY_START_H * 60,
           DAY_END_H * 60,
           MIN_BLOCK_MIN,
@@ -127,21 +128,17 @@ function FreeBlock({
       },
     });
 
-  const topPan = useRef(makeResponder('top')).current;
-  const bottomPan = useRef(makeResponder('bottom')).current;
-  const movePan = useRef(makeResponder('move')).current;
+  const topPan = useRef(makeEdge('top')).current;
+  const bottomPan = useRef(makeEdge('bottom')).current;
 
-  // Live-preview geometry while dragging, clamped to the track.
   let top = minToPx(startMin);
   let height = minToPx(endMin) - top;
   if (drag) {
     if (drag.edge === 'top') {
       top += drag.dy;
       height -= drag.dy;
-    } else if (drag.edge === 'bottom') {
-      height += drag.dy;
     } else {
-      top += drag.dy;
+      height += drag.dy;
     }
     top = Math.max(0, Math.min(top, TRACK_H - 12));
     height = Math.max(12, Math.min(height, TRACK_H - top));
@@ -149,21 +146,15 @@ function FreeBlock({
 
   return (
     <View
-      {...movePan.panHandlers}
-      style={[
-        styles.freeBlock,
-        { top, height },
-        elevated ? styles.freeBlockElevated : null,
-        drag ? styles.freeBlockActive : null,
-      ]}
+      style={[styles.freeBlock, { top, height }, drag ? styles.freeBlockActive : null]}
     >
       <Pressable
         accessibilityLabel={`Free ${w.start} to ${w.end}. Long press to remove.`}
         onPress={onSelect}
         onLongPress={onRemove}
+        delayLongPress={350}
         style={StyleSheet.absoluteFill}
       />
-      {/* Edge handles */}
       <View {...topPan.panHandlers} style={[styles.handle, styles.handleTop]}>
         <View style={styles.handleBar} />
       </View>
@@ -171,6 +162,142 @@ function FreeBlock({
         <View style={styles.handleBar} />
       </View>
     </View>
+  );
+}
+
+// ---- Column touch surface: tap adds an hour, drag paints a range ------------
+
+function ColumnSurface({
+  date,
+  hasWindowAt,
+  onTapHour,
+  onPaintRange,
+  onDragActive,
+}: {
+  date: string;
+  hasWindowAt: (relY: number) => boolean;
+  onTapHour: (h: number) => void;
+  onPaintRange: (startH: number, endH: number) => void;
+  onDragActive: (active: boolean) => void;
+}) {
+  const [preview, setPreview] = useState<{ a: number; b: number } | null>(null);
+  const startRelY = useRef(0);
+  const live = useRef({ hasWindowAt, onTapHour, onPaintRange, onDragActive });
+  live.current = { hasWindowAt, onTapHour, onPaintRange, onDragActive };
+
+  const pan = useRef(
+    PanResponder.create({
+      // Claim empty grid; decline touches that land on an existing green block
+      // so its edges/body keep working.
+      onStartShouldSetPanResponder: (e) => !live.current.hasWindowAt(e.nativeEvent.locationY),
+      onPanResponderGrant: (e, g) => {
+        startRelY.current = e.nativeEvent.locationY - g.dy;
+      },
+      onPanResponderMove: (_e, g) => {
+        const a = startRelY.current;
+        const b = startRelY.current + g.dy;
+        if (Math.abs(g.dy) > 8) {
+          live.current.onDragActive(true);
+          setPreview({ a: Math.min(a, b), b: Math.max(a, b) });
+        }
+      },
+      onPanResponderRelease: (_e, g) => {
+        const moved = Math.abs(g.dy) > 8;
+        setPreview(null);
+        live.current.onDragActive(false);
+        if (!moved) {
+          live.current.onTapHour(pxToHour(startRelY.current));
+          return;
+        }
+        const startH = pxToHour(Math.min(startRelY.current, startRelY.current + g.dy));
+        const endH =
+          Math.max(startH + 1, pxToHour(Math.max(startRelY.current, startRelY.current + g.dy)) + 1);
+        live.current.onPaintRange(startH, Math.min(endH, DAY_END_H));
+      },
+      onPanResponderTerminate: () => {
+        setPreview(null);
+        live.current.onDragActive(false);
+      },
+    }),
+  ).current;
+
+  return (
+    <View
+      accessibilityLabel={`Add free time on ${date}`}
+      style={StyleSheet.absoluteFill}
+      {...pan.panHandlers}
+    >
+      {preview ? (
+        <View
+          pointerEvents="none"
+          style={[styles.paintPreview, { top: preview.a, height: Math.max(12, preview.b - preview.a) }]}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+// ---- Neighborhood picker modal ----------------------------------------------
+
+function NeighborhoodModal({
+  date,
+  onClose,
+}: {
+  date: string | null;
+  onClose: () => void;
+}) {
+  const profile = useStore((s) => s.profile);
+  const dayPrefs = useStore((s) => (date ? s.dayPrefsByDate[date] : undefined));
+  const setDayPrefs = useStore((s) => s.setDayPrefs);
+  const clearDayPrefs = useStore((s) => s.clearDayPrefs);
+
+  if (!date || !profile) return null;
+  const selected = resolvePrefs(profile, dayPrefs).neighborhoods;
+
+  function toggle(n: string) {
+    const next = selected.includes(n) ? selected.filter((x) => x !== n) : [...selected, n];
+    if (next.length > 0) void setDayPrefs(date as string, { neighborhoods: next });
+  }
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalScrim} onPress={onClose}>
+        <Pressable style={styles.modalCard} onPress={() => {}}>
+          <Text style={styles.modalEyebrow}>NEIGHBORHOODS</Text>
+          <Text style={styles.modalTitle}>
+            {weekdayLabel(date)}, {monthDayLabel(date)}
+          </Text>
+          <Text style={styles.modalHint}>Where do you want this day to happen?</Text>
+          <View style={styles.chipWrap}>
+            {NEIGHBORHOODS.map((n) => {
+              const on = selected.includes(n);
+              return (
+                <Pressable
+                  key={n}
+                  accessibilityRole="button"
+                  onPress={() => toggle(n)}
+                  style={[styles.nbChip, on && styles.nbChipOn]}
+                >
+                  <Text style={[styles.nbChipText, on && styles.nbChipTextOn]}>{n}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <View style={styles.modalActions}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => void clearDayPrefs(date)}
+              style={styles.modalGhost}
+            >
+              <Text style={styles.modalGhostText}>Use my usual</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={onClose} style={styles.modalDone}>
+              <Text style={styles.modalDoneText}>Done</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -197,6 +324,10 @@ export function WeekGrid({
   onSetWindows,
   onDragActive,
 }: WeekGridProps) {
+  const profile = useStore((s) => s.profile);
+  const dayPrefsByDate = useStore((s) => s.dayPrefsByDate);
+  const [nbModalDate, setNbModalDate] = useState<string | null>(null);
+
   const plansByDate = useMemo(() => {
     const map: Record<string, PlanItem[]> = {};
     for (const p of Object.values(plansByKey)) {
@@ -209,7 +340,6 @@ export function WeekGrid({
     return map;
   }, [plansByKey, dates]);
 
-  /** Merge windows through an hour-set so edits never overlap. */
   function normalize(windows: { s: number; e: number }[]): TimeWindow[] {
     const hours = new Set<number>();
     for (const w of windows) {
@@ -234,33 +364,29 @@ export function WeekGrid({
     return out;
   }
 
-  /** Render path: reactive prop. */
   function windowsOf(date: string): TimeWindow[] {
     return availabilityByDate[date]?.windows ?? [];
   }
 
-  /** Mutation path: always the freshest store state so rapid edits never
-   *  clobber each other (burst taps land within one render frame). */
+  /** Mutation path: always the freshest store state. */
   function freshWindows(date: string): { s: number; e: number }[] {
     const ws = useStore.getState().availabilityByDate[date]?.windows ?? [];
     return ws.map((w) => ({ s: toMinutes(w.start), e: toMinutes(w.end) }));
   }
 
-  function addHour(date: string, h: number) {
+  function addRange(date: string, startH: number, endH: number) {
     const ws = freshWindows(date);
-    ws.push({ s: h * 60, e: (h + 1) * 60 });
+    ws.push({ s: startH * 60, e: endH * 60 });
     onSetWindows(date, normalize(ws));
     onSelectDay(date);
   }
 
-  /** Commit a resize by matching the ORIGINAL window value (never a stale
-   *  index: merges/removals can reshuffle positions between render and drop). */
   function resizeWindow(date: string, orig: TimeWindow, ns: number, ne: number) {
     const os = toMinutes(orig.start);
     const oe = toMinutes(orig.end);
     const ws = freshWindows(date);
     const idx = ws.findIndex((w) => w.s === os && w.e === oe);
-    if (idx < 0) return; // the window changed under us; drop the edit
+    if (idx < 0) return;
     ws[idx] = { s: ns, e: ne };
     onSetWindows(date, normalize(ws));
   }
@@ -274,7 +400,7 @@ export function WeekGrid({
 
   return (
     <View>
-      {/* Day headers */}
+      {/* Day headers + per-day neighborhood buttons */}
       <View style={styles.headRow}>
         <View style={styles.gutter} />
         {dates.map((d) => {
@@ -285,49 +411,61 @@ export function WeekGrid({
           const weekday = ['S', 'M', 'T', 'W', 'T', 'F', 'S'][
             new Date(`${d}T12:00:00Z`).getUTCDay()
           ];
+          const overridden = !!dayPrefsByDate[d]?.neighborhoods?.length;
+          const nbCount = profile
+            ? resolvePrefs(profile, dayPrefsByDate[d]).neighborhoods.length
+            : 0;
           return (
-            <Pressable
-              key={d}
-              accessibilityRole="button"
-              accessibilityLabel={`Select ${d}`}
-              onPress={() => onSelectDay(d)}
-              style={styles.dayHead}
-            >
-              <Text style={[styles.dayInitial, isToday && { color: colors.accent }]}>
-                {weekday}
-              </Text>
-              <View
-                style={[
-                  styles.dayNumWrap,
-                  isToday && styles.todayNumWrap,
-                  isSelected && !isToday && styles.selectedNumWrap,
-                ]}
+            <View key={d} style={styles.dayHead}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Select ${d}`}
+                onPress={() => onSelectDay(d)}
+                style={styles.dayHeadTop}
               >
-                <Text
+                <Text style={[styles.dayInitial, isToday && { color: colors.accent }]}>
+                  {weekday}
+                </Text>
+                <View
                   style={[
-                    styles.dayNum,
-                    isToday && { color: colors.onArt },
+                    styles.dayNumWrap,
+                    isToday && styles.todayNumWrap,
+                    isSelected && !isToday && styles.selectedNumWrap,
                   ]}
                 >
-                  {dayNum}
-                </Text>
-              </View>
-              {holiday ? (
-                <View
-                  accessibilityLabel={holiday.name}
-                  style={[styles.holidayTick, { backgroundColor: holiday.color }]}
+                  <Text style={[styles.dayNum, isToday && { color: colors.onArt }]}>{dayNum}</Text>
+                </View>
+                {holiday ? (
+                  <View
+                    accessibilityLabel={holiday.name}
+                    style={[styles.holidayTick, { backgroundColor: holiday.color }]}
+                  />
+                ) : (
+                  <View style={styles.holidayTickSpacer} />
+                )}
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Choose neighborhoods for ${d}`}
+                onPress={() => setNbModalDate(d)}
+                style={[styles.nbButton, overridden && styles.nbButtonOn]}
+              >
+                <MapPin
+                  size={9}
+                  color={overridden ? colors.accent : colors.textFaint}
+                  strokeWidth={2}
                 />
-              ) : (
-                <View style={styles.holidayTickSpacer} />
-              )}
-            </Pressable>
+                <Text style={[styles.nbButtonText, overridden && { color: colors.accent }]}>
+                  {nbCount}
+                </Text>
+              </Pressable>
+            </View>
           );
         })}
       </View>
 
       {/* Hour grid */}
       <View style={styles.body}>
-        {/* Time gutter */}
         <View style={[styles.gutter, { height: TRACK_H }]}>
           {HOURS.map((h) => (
             <Text key={h} style={[styles.hourLabel, { top: minToPx(h * 60) - 6 }]}>
@@ -336,85 +474,91 @@ export function WeekGrid({
           ))}
         </View>
 
-        {dates.map((d) => (
-          <View key={d} style={[styles.col, { height: TRACK_H }]}>
-            {/* Hairline hour rules + tap-to-add cells */}
-            {HOURS.map((h) => (
-              <Pressable
-                key={h}
-                accessibilityLabel={`Add free time ${d} ${hourLabel(h)}`}
-                onPress={() => addHour(d, h)}
-                style={[styles.hourCell, { top: minToPx(h * 60) }]}
-              />
-            ))}
+        {dates.map((d) => {
+          const windows = windowsOf(d);
+          return (
+            <View key={d} style={[styles.col, { height: TRACK_H }]}>
+              {/* Hairline hour rules (non-interactive) */}
+              {HOURS.map((h) => (
+                <View key={h} style={[styles.hourRule, { top: minToPx(h * 60) }]} />
+              ))}
 
-            {/* Free (green) blocks */}
-            {windowsOf(d).map((w) => (
-              <FreeBlock
-                key={`${w.start}-${w.end}`}
-                window={w}
-                elevated={selectedDate === d}
-                onCommit={(ns, ne) => resizeWindow(d, w, ns, ne)}
-                onRemove={() => removeWindow(d, w)}
-                onSelect={() => onSelectDay(d)}
+              {/* Touch surface: tap to add an hour, drag to paint a range */}
+              <ColumnSurface
+                date={d}
+                hasWindowAt={(relY) => {
+                  const hr = pxToHour(relY);
+                  return freshWindows(d).some((w) => hr * 60 >= w.s && hr * 60 < w.e);
+                }}
+                onTapHour={(h) => addRange(d, h, h + 1)}
+                onPaintRange={(a, b) => addRange(d, a, b)}
                 onDragActive={onDragActive}
               />
-            ))}
 
-            {/* Plan blocks tile INSIDE the free window */}
-            {(plansByDate[d] ?? []).map((item) => {
-              const top = minToPx(Math.max(toMinutes(item.startTime), DAY_START_H * 60));
-              const bottom = minToPx(Math.min(toMinutes(item.endTime), DAY_END_H * 60));
-              const h = bottom - top;
-              if (h <= 2) return null;
-              return (
-                <Pressable
-                  key={`${item.id}-${item.startTime}`}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${item.title}, ${item.startTime}`}
-                  onPress={() => onSelectDay(d)}
-                  style={({ pressed }) => [
-                    styles.planBlock,
-                    { top, height: h },
-                    pressed && { backgroundColor: colors.plannedPressed },
-                  ]}
-                >
-                  {h >= 24 ? (
-                    <Text numberOfLines={h >= 44 ? 3 : 1} style={styles.planBlockText}>
-                      {item.title}
-                    </Text>
-                  ) : null}
-                </Pressable>
-              );
-            })}
-          </View>
-        ))}
+              {/* Green fill behind the plans (non-selected days show it opaque) */}
+              {selectedDate !== d
+                ? windows.map((w) => (
+                    <FreeFill key={`${w.start}-${w.end}`} window={w} onSelect={() => onSelectDay(d)} />
+                  ))
+                : null}
+
+              {/* Plan blocks tile INSIDE the free window (kind-colored) */}
+              {(plansByDate[d] ?? []).map((item) => {
+                const top = minToPx(Math.max(toMinutes(item.startTime), DAY_START_H * 60));
+                const bottom = minToPx(Math.min(toMinutes(item.endTime), DAY_END_H * 60));
+                const h = bottom - top;
+                if (h <= 2) return null;
+                return (
+                  <Pressable
+                    key={`${item.id}-${item.startTime}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${item.title}, ${item.startTime}`}
+                    onPress={() => onSelectDay(d)}
+                    style={({ pressed }) => [
+                      styles.planBlock,
+                      { top, height: h, borderLeftColor: kindColor(item.kind) },
+                      pressed && { backgroundColor: colors.plannedPressed },
+                    ]}
+                  >
+                    {h >= 20 ? (
+                      <Text numberOfLines={1} style={styles.planBlockText}>
+                        {item.title}
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+
+              {/* Selected day: an editable translucent overlay on TOP of the
+                  plans, so its edges stay grabbable while plans show through. */}
+              {selectedDate === d
+                ? windows.map((w) => (
+                    <FreeBlockEditor
+                      key={`${w.start}-${w.end}`}
+                      window={w}
+                      onCommit={(ns, ne) => resizeWindow(d, w, ns, ne)}
+                      onRemove={() => removeWindow(d, w)}
+                      onSelect={() => onSelectDay(d)}
+                      onDragActive={onDragActive}
+                    />
+                  ))
+                : null}
+            </View>
+          );
+        })}
       </View>
+
+      <NeighborhoodModal date={nbModalDate} onClose={() => setNbModalDate(null)} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  headRow: {
-    flexDirection: 'row',
-    marginBottom: 4,
-  },
-  gutter: {
-    width: 30,
-    position: 'relative',
-  },
-  hourLabel: {
-    position: 'absolute',
-    right: 4,
-    fontSize: 10,
-    color: colors.textFaint,
-  },
-  dayHead: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 2,
-    paddingBottom: 2,
-  },
+  headRow: { flexDirection: 'row', marginBottom: 4 },
+  gutter: { width: 26, position: 'relative' },
+  hourLabel: { position: 'absolute', right: 3, fontSize: 10, color: colors.textFaint },
+  dayHead: { flex: 1, alignItems: 'center', gap: 3 },
+  dayHeadTop: { alignItems: 'center', gap: 2 },
   dayInitial: {
     fontSize: 10,
     color: colors.textMuted,
@@ -431,22 +575,29 @@ const styles = StyleSheet.create({
   todayNumWrap: { backgroundColor: colors.accent },
   selectedNumWrap: { borderWidth: 1, borderColor: colors.borderStrong },
   dayNum: { fontSize: 12, color: colors.text, fontWeight: font.weight.semibold },
-  holidayTick: {
-    width: 14,
-    height: 2,
-    borderRadius: 1,
-  },
+  holidayTick: { width: 14, height: 2, borderRadius: 1 },
   holidayTickSpacer: { height: 2 },
-  body: {
+  nbButton: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 1,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
+  nbButtonOn: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+  nbButtonText: { fontSize: 10, color: colors.textMuted, fontWeight: font.weight.semibold },
+  body: { flexDirection: 'row' },
   col: {
     flex: 1,
     position: 'relative',
     borderLeftWidth: StyleSheet.hairlineWidth,
     borderLeftColor: colors.gridLine,
   },
-  hourCell: {
+  hourRule: {
     position: 'absolute',
     left: 0,
     right: 0,
@@ -454,7 +605,17 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.gridLine,
   },
-  freeBlock: {
+  paintPreview: {
+    position: 'absolute',
+    left: 2,
+    right: 2,
+    backgroundColor: 'rgba(46,107,88,0.28)',
+    borderWidth: 1,
+    borderColor: colors.free,
+    borderRadius: radius.sm,
+  },
+  // Opaque background fill (non-selected days).
+  freeFill: {
     position: 'absolute',
     left: 2,
     right: 2,
@@ -463,47 +624,93 @@ const styles = StyleSheet.create({
     borderColor: colors.free,
     borderRadius: radius.sm,
   },
-  freeBlockActive: {
-    borderColor: colors.text,
-  },
-  // The selected day's green blocks ride above its plan blocks so the edge
-  // handles stay reachable once the day is planned; translucent so the navy
-  // blocks stay visible underneath.
-  freeBlockElevated: {
+  // Translucent editable overlay (selected day), so plans show through.
+  freeBlock: {
+    position: 'absolute',
+    left: 2,
+    right: 2,
     zIndex: 10,
-    backgroundColor: 'rgba(46,107,88,0.12)',
+    backgroundColor: 'rgba(46,107,88,0.14)',
     borderWidth: 1.5,
+    borderColor: colors.free,
+    borderRadius: radius.sm,
   },
+  freeBlockActive: { borderColor: colors.text },
   handle: {
     position: 'absolute',
     left: 0,
     right: 0,
-    height: 14,
+    height: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  handleTop: { top: -4 },
-  handleBottom: { bottom: -4 },
-  handleBar: {
-    width: 14,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: colors.free,
-  },
+  handleTop: { top: -5 },
+  handleBottom: { bottom: -5 },
+  handleBar: { width: 16, height: 3, borderRadius: 2, backgroundColor: colors.free },
   planBlock: {
     position: 'absolute',
-    left: 4,
-    right: 4,
+    left: 3,
+    right: 3,
     backgroundColor: colors.planned,
     borderRadius: radius.sm,
-    paddingHorizontal: 3,
+    borderLeftWidth: 3,
+    paddingHorizontal: 4,
     paddingVertical: 2,
     overflow: 'hidden',
+    justifyContent: 'center',
   },
   planBlockText: {
     color: colors.onArt,
     fontSize: 9,
-    lineHeight: 11,
+    lineHeight: 12,
     fontWeight: font.weight.medium,
   },
+  // Neighborhood modal
+  modalScrim: {
+    flex: 1,
+    backgroundColor: 'rgba(20,16,12,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: colors.bg,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: spacing.xl,
+    gap: spacing.sm,
+  },
+  modalEyebrow: {
+    color: colors.textFaint,
+    fontSize: 11,
+    fontWeight: font.weight.bold,
+    letterSpacing: 1.4,
+  },
+  modalTitle: { color: colors.text, fontFamily: font.family.heading, fontSize: font.size.xl },
+  modalHint: { color: colors.textMuted, fontSize: font.size.sm, marginBottom: spacing.xs },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  nbChip: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  nbChipOn: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+  nbChipText: { color: colors.textMuted, fontSize: font.size.sm },
+  nbChipTextOn: { color: colors.accent, fontWeight: font.weight.semibold },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: spacing.md,
+  },
+  modalGhost: { paddingVertical: spacing.sm, paddingHorizontal: spacing.sm },
+  modalGhostText: { color: colors.textMuted, fontSize: font.size.sm },
+  modalDone: {
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radius.md,
+  },
+  modalDoneText: { color: colors.onArt, fontSize: font.size.md, fontWeight: font.weight.semibold },
 });
