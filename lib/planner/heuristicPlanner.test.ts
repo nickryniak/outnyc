@@ -87,16 +87,15 @@ describe('HeuristicPlanner', () => {
   });
 
   it('widens the price filter when the tier has zero restaurants, so dinner still lands', async () => {
-    // Tier 4 has NO seed places at all (curated data tops out at $$$), while
-    // price-agnostic events keep the events pool healthy — the exact starvation
-    // shape the per-pool widening guards against.
+    // Recreate the starvation shape the per-pool widening guards against: a
+    // places pool with NOTHING at $$$$ (every place capped at $$$), while
+    // price-agnostic events keep the events pool healthy.
     const price = { min: 4 as const, max: 4 as const };
-    expect(
-      SEED_PLACES.some((p) => p.priceTier != null && p.priceTier >= 4),
-    ).toBe(false);
+    const places = SEED_PLACES.filter((p) => p.priceTier != null && p.priceTier <= 3);
+    expect(places.length).toBeGreaterThan(0);
     const events = SEED_EVENTS.map((e) => ({ ...e, priceTier: undefined }));
     const plan = await heuristicPlanner.plan(
-      request({ start: '17:00', end: '22:00' }, { price, events }),
+      request({ start: '17:00', end: '22:00' }, { price, events, places }),
     );
     // Widening one notch (to $$$) reaches real restaurants, so the dinner
     // anchor exists instead of the evening being all events.

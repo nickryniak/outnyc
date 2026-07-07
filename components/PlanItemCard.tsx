@@ -49,12 +49,13 @@ export function PlanItemCard({ item, stopNumber }: { item: PlanItem; stopNumber?
   return (
     <View style={styles.stop} accessibilityLabel={summary}>
       <View style={styles.numeralCol}>
+        {/* Solid MTA-style roundel: kind color fill, white numeral. */}
         <View
           accessible
           accessibilityLabel={stopNumber != null ? `Stop ${stopNumber}` : 'Stop'}
-          style={[styles.numeral, { borderColor: tint }]}
+          style={[styles.numeral, { backgroundColor: tint }]}
         >
-          <Text style={[styles.numeralText, { color: tint }]} maxFontSizeMultiplier={1.4}>
+          <Text style={styles.numeralText} maxFontSizeMultiplier={1.4}>
             {stopNumber ?? '•'}
           </Text>
         </View>
@@ -65,7 +66,7 @@ export function PlanItemCard({ item, stopNumber }: { item: PlanItem; stopNumber?
           <Text style={styles.time}>
             {format12h(item.startTime)} – {format12h(item.endTime)}
           </Text>
-          <Text style={[styles.kind, { color: tint }]}>
+          <Text style={styles.kind}>
             {stopLabel(item.kind, item.startTime, item.tags).toUpperCase()}
           </Text>
         </View>
@@ -130,12 +131,11 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: radius.pill,
-    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surface,
   },
   numeralText: {
+    color: colors.onArt,
     fontFamily: font.family.display,
     fontSize: font.size.lg,
   },
@@ -156,6 +156,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   kind: {
+    color: colors.textMuted,
     fontSize: font.size.xs,
     fontWeight: font.weight.bold,
     letterSpacing: 1.4,
@@ -204,7 +205,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   actionPrimaryText: {
-    color: colors.onArt,
+    color: colors.onAccent,
     fontSize: font.size.sm,
     fontWeight: font.weight.semibold,
   },

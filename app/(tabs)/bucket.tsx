@@ -20,53 +20,12 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, Caption, Eyebrow, Heading, LoadingView } from '../../components/ui';
+import { parseBucketText, parseList } from '../../lib/bucketParse';
 import { confirmDestructive } from '../../lib/confirm';
 import { useStore } from '../../lib/store';
 import { colors, font, radius, spacing } from '../../lib/theme';
 import { monthDayLabel, todayNY, weekdayLabel } from '../../lib/time';
 import type { BucketItem } from '../../lib/types';
-
-// ---- Paste parsing ----------------------------------------------------------
-
-/** Split pasted text into item strings — handles "1." / "1)" / bullets / lines. */
-function parseList(text: string): string[] {
-  const t = text.trim();
-  if (!t) return [];
-  const parts = /(^|\s)\d+[.)]\s+/.test(t)
-    ? t.split(/\s*\d+[.)]\s+/)
-    : t.split(/\r?\n|•|(?:^|\s)[-*]\s+/);
-  return parts.map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
-}
-
-/** Split "Title - note" into a title + optional note. */
-function splitTitleNote(line: string): { title: string; note?: string } {
-  const [first, ...rest] = line.split(/\s+[-–—]\s+/);
-  if (first && rest.length > 0) return { title: first.trim(), note: rest.join('. ').trim() };
-  return { title: line };
-}
-
-const TAG_RULES: [RegExp, string[]][] = [
-  [/park|garden|beach|island|greenway|hudson|rockaway|red hook|governors|roosevelt|kayak|bike|walk|outdoor|golf/i, ['outdoors']],
-  [/museum|\bmet\b|broadway|shakespeare|gallery|\bart\b/i, ['art']],
-  [/jazz|live music|concert|vanguard/i, ['live music']],
-  [/movie|film|snl|late night|fallon|show/i, ['film']],
-  [/rooftop|\bbar\b|party|le bain|club|drinks|cocktail/i, ['bar']],
-  [/pizza|ramen|food|eat|dinner|brunch|slice/i, ['food']],
-  [/comedy|stand-?up/i, ['comedy']],
-];
-
-function inferTags(text: string): string[] {
-  const tags = new Set<string>();
-  for (const [re, ts] of TAG_RULES) if (re.test(text)) ts.forEach((t) => tags.add(t));
-  return [...tags];
-}
-
-function toInputs(text: string) {
-  return parseList(text).map((line) => {
-    const { title, note } = splitTitleNote(line);
-    return { title, note, tags: inferTags(line) };
-  });
-}
 
 // ---- Screen -----------------------------------------------------------------
 
@@ -112,7 +71,7 @@ export default function BucketScreen() {
   }
 
   async function onAdd() {
-    const inputs = toInputs(draft);
+    const inputs = parseBucketText(draft);
     if (inputs.length === 0) return;
     await addBucketItems(inputs);
     setDraft('');
@@ -300,7 +259,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   checkDone: { backgroundColor: colors.secondary, borderColor: colors.secondary },
-  checkMark: { color: colors.onArt, fontSize: 14, fontWeight: font.weight.bold },
+  checkMark: { color: colors.onAccent, fontSize: 14, fontWeight: font.weight.bold },
   remove: { padding: spacing.xs },
   removeGlyph: { color: colors.textFaint, fontSize: font.size.md },
   scheduledChip: {

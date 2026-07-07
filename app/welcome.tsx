@@ -1,19 +1,27 @@
 // =============================================================================
 // OutNYC — welcome (app/welcome.tsx)
 // =============================================================================
-// A full-bleed "sunset over Manhattan" landing screen. Pure welcome — no
-// onboarding fields — leading into the app.
+// A full-bleed station sign: black field, six subway-bullet roundels spelling
+// the wordmark, one caution-yellow rule. Pure welcome — no onboarding fields —
+// leading into the app.
 // =============================================================================
 
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Skyline } from '../components/Skyline';
-import { Button } from '../components/ui';
 import { useStore } from '../lib/store';
-import { colors, font, sky, spacing } from '../lib/theme';
+import { colors, font, radius, spacing } from '../lib/theme';
+
+/** The wordmark as subway line bullets — one letter per MTA line color. */
+const ROUNDELS: { letter: string; bg: string; ink: string }[] = [
+  { letter: 'O', bg: colors.restaurant, ink: colors.onArt },
+  { letter: 'U', bg: colors.bar, ink: colors.onArt },
+  { letter: 'T', bg: colors.gold, ink: colors.sign },
+  { letter: 'N', bg: colors.bucket, ink: colors.onArt },
+  { letter: 'Y', bg: colors.activity, ink: colors.onArt },
+  { letter: 'C', bg: colors.event, ink: colors.onArt },
+];
 
 export default function Welcome() {
   const router = useRouter();
@@ -31,20 +39,25 @@ export default function Welcome() {
 
   return (
     <View style={styles.container}>
-      <View style={StyleSheet.absoluteFill}>
-        <Skyline variant="evening" height={900} />
-      </View>
-      <LinearGradient
-        colors={['rgba(18,14,10,0.35)', 'rgba(18,14,10,0.1)', 'rgba(18,14,10,0.55)', 'rgba(18,14,10,0.92)']}
-        locations={[0, 0.35, 0.7, 1]}
-        style={StyleSheet.absoluteFill}
-      />
-
-      <View style={[styles.content, { paddingTop: insets.top + spacing.xl, paddingBottom: insets.bottom + spacing.xl }]}>
+      <View
+        style={[
+          styles.content,
+          { paddingTop: insets.top + spacing.xl, paddingBottom: insets.bottom + spacing.xl },
+        ]}
+      >
         <Text style={styles.eyebrow}>NEW YORK CITY</Text>
 
         <View style={styles.bottom}>
-          <Text style={styles.wordmark}>OutNYC</Text>
+          <View style={styles.roundelRow} accessible accessibilityLabel="OutNYC">
+            {ROUNDELS.map((r) => (
+              <View key={r.letter} style={[styles.roundel, { backgroundColor: r.bg }]}>
+                <Text style={[styles.roundelLetter, { color: r.ink }]} maxFontSizeMultiplier={1.2}>
+                  {r.letter}
+                </Text>
+              </View>
+            ))}
+          </View>
+          <View style={styles.rule} />
           <Text style={styles.tagline}>Your day out, planned.</Text>
           <Text style={styles.blurb}>
             Mark when you are free and get a walkable plan for every day of your
@@ -53,11 +66,13 @@ export default function Welcome() {
           {/* Revisited from inside the app, the CTA pops back to WHEREVER
               pushed it (week header or Settings' "View intro"), so the label
               must not promise a specific destination. */}
-          <Button
-            label={router.canGoBack() ? 'Done' : 'Start planning'}
+          <Pressable
+            accessibilityRole="button"
             onPress={enter}
-            style={styles.cta}
-          />
+            style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]}
+          >
+            <Text style={styles.ctaText}>{router.canGoBack() ? 'Done' : 'Start planning'}</Text>
+          </Pressable>
         </View>
       </View>
     </View>
@@ -65,7 +80,7 @@ export default function Welcome() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: sky.evening.building },
+  container: { flex: 1, backgroundColor: colors.sign },
   content: {
     flex: 1,
     paddingHorizontal: spacing.xl,
@@ -77,19 +92,25 @@ const styles = StyleSheet.create({
     fontWeight: font.weight.bold,
     letterSpacing: 3,
   },
-  bottom: { gap: spacing.sm },
-  wordmark: {
-    color: colors.onArt,
-    fontFamily: font.family.displayBlack,
-    fontSize: font.size.wordmark,
-    letterSpacing: -1.5,
-    lineHeight: font.size.wordmark + 2,
+  bottom: { gap: spacing.md },
+  roundelRow: { flexDirection: 'row', gap: spacing.sm },
+  roundel: {
+    width: 46,
+    height: 46,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  roundelLetter: {
+    fontFamily: font.family.displayBlack,
+    fontSize: font.size.xl,
+  },
+  rule: { height: 3, backgroundColor: colors.gold, marginTop: spacing.xs },
   tagline: {
     color: colors.onArt,
-    fontFamily: font.family.serifItalic,
-    fontSize: font.size.xl,
-    marginBottom: spacing.xs,
+    fontFamily: font.family.display,
+    fontSize: font.size.xxl,
+    letterSpacing: -0.5,
   },
   blurb: {
     color: colors.onArtMuted,
@@ -98,6 +119,16 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   cta: {
-    backgroundColor: colors.accent,
+    minHeight: 52,
+    borderRadius: radius.pill,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaText: {
+    color: colors.sign,
+    fontSize: font.size.md,
+    fontWeight: font.weight.semibold,
+    letterSpacing: 0.2,
   },
 });

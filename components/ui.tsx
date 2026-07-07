@@ -1,8 +1,8 @@
 // =============================================================================
 // OutNYC — shared UI primitives (components/ui.tsx)
 // =============================================================================
-// Editorial & warm. Serif display faces (Fraunces) for Title/Heading; the system
-// sans for body/UI. No hardcoded hex — all tokens come from lib/theme.
+// Subway wayfinding: Inter grotesk throughout, black-sign primary buttons,
+// hairline rules. No hardcoded hex — all tokens come from lib/theme.
 // =============================================================================
 
 import { ReactNode } from 'react';
@@ -94,7 +94,10 @@ export function Button({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={variant === 'primary' ? colors.onArt : colors.accent} />
+        // A loading button always wears the disabled surfaceAlt fill (the
+        // override wins over the variant), so the spinner must be ink-toned —
+        // a white spinner would vanish on the pale panel.
+        <ActivityIndicator color={variant === 'primary' ? colors.textFaint : colors.accent} />
       ) : (
         <Text
           style={[
@@ -240,8 +243,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Primary actions are black signs with white type.
   btnPrimary: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.sign,
   },
   btnSecondary: {
     backgroundColor: colors.transparent,

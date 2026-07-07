@@ -1,30 +1,30 @@
 // =============================================================================
 // OutNYC — zustand store (lib/store.ts)
 // =============================================================================
-// The single app store. Wires the Repository, default Planner, providers, and
-// local notifications together. Screens read state + call actions; they never
-// touch the repository or planner directly.
+// The single app store. Wires the Repository, default Planner, and providers
+// together. Screens read state + call actions; they never touch the repository
+// or planner directly.
 //
-// v2 planning rules implemented here:
+// Planning rules implemented here:
+//   - AUTO-PLANNING: setting or moving a free-time window plans it immediately
+//     (no "Plan this day" button); moving a window releases its old plan's
+//     venues so the re-plan can keep them.
 //   - Per-day preferences (neighborhoods/price/party/interests) override the
 //     profile defaults for that day only.
 //   - Never-repeat: every candidate a day has been shown lands in seenByDate;
 //     planning, reshuffles, and swaps exclude everything seen ANYWHERE in the
-//     same Mon-Sun week, absolutely — when the catalog runs dry the app is
-//     honest (sparser days, clear messages) instead of quietly repeating.
+//     same Mon-Sun week. If that leaves a window with NOTHING, the exclusion
+//     falls back to this date only (same-day repeats stay impossible) — a
+//     venue from earlier in the week beats a dead window.
 //   - Reshuffle verbs: day (reshuffleDay) and single block (swapPlanItem /
 //     alternativesForItem, with optional intent).
 // =============================================================================
 
 import { create } from 'zustand';
 
+import { parseBucketText } from './bucketParse';
 import { BUCKET_SEED, NEIGHBORHOODS, SEED_PROFILE } from './constants';
 import { holidayFor } from './holidays';
-import {
-  cancelPlanNotifications,
-  ensureNotificationPermission,
-  schedulePlanNotifications,
-} from './notifications';
 import { defaultPlanner } from './planner';
 import { scoreCandidate, type ScoringContext } from './planner/scoring';
 import {
@@ -32,6 +32,7 @@ import {
   candidateDuration,
   filterToNeighborhoods,
   hash,
+  matchesNeighborhoods,
   rebuildConnectors,
   sameCategory,
   venueKey,
@@ -59,14 +60,6 @@ type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 export interface PlanningState {
   status: 'idle' | 'planning' | 'error';
   error?: string;
-}
-
-/** Outcome of locking in a plan, so the UI can give honest feedback. */
-export interface LockResult {
-  scheduled: number;
-  /** Stops NOT scheduled because they start too soon (nudge would be in the past). */
-  skipped: number;
-  reason: 'ok' | 'permission-denied' | 'none-upcoming';
 }
 
 /**
@@ -187,7 +180,6 @@ interface StoreState {
 
   // ---- transient ----
   planning: Record<string, PlanningState>; // keyed like plansByKey
-  lockedPlanIds: Record<string, boolean>; // planId -> notifications scheduled
   /**
    * Per-date note from the events provider's last fetch for that date:
    * 'live-no-area-matches' means the ticketed live sources answered fine but
@@ -238,9 +230,6 @@ interface StoreState {
   ): Promise<boolean>;
   /** Everything that could replace a block right now (same category + slot). */
   alternativesForItem(date: string, window: TimeWindow, itemId: string): Promise<Candidate[]>;
-
-  lockInPlan(planId: string): Promise<LockResult>;
-  unlockPlan(planId: string): Promise<void>;
 }
 
 export function planKey(date: string, window: TimeWindow): string {
@@ -258,15 +247,18 @@ let booting = false;
 const nonceByKey: Record<string, number> = {};
 
 /**
- * Per-date plan-generation queue. Sibling windows on one date must generate
- * SEQUENTIALLY so the second sees the first's never-repeat entries (two
- * windows mounting at once would otherwise both pick the same top candidate).
+ * GLOBAL plan-mutation queue — one chain for ALL dates. Plan generation reads
+ * week-wide never-repeat state (weekSeenIds) and then commits its picks; two
+ * dates planning concurrently (e.g. "Plan my whole week" fanning out over
+ * seven days) could both read the same snapshot and pick the same venue
+ * before either committed. One queue makes each read-check-commit atomic;
+ * within a date it also preserves the sibling-window ordering the old
+ * per-date queue existed for.
  */
-const planQueueByDate: Record<string, Promise<void>> = {};
-function enqueuePlan(date: string, work: () => Promise<void>): Promise<void> {
-  const prev = planQueueByDate[date] ?? Promise.resolve();
-  const next = prev.then(work, work);
-  planQueueByDate[date] = next.catch(() => undefined);
+let planQueue: Promise<void> = Promise.resolve();
+function enqueuePlan(_date: string, work: () => Promise<void>): Promise<void> {
+  const next = planQueue.then(work, work);
+  planQueue = next.catch(() => undefined);
   return next;
 }
 
@@ -327,16 +319,25 @@ async function loadAllInto(set: SetFn): Promise<void> {
   if (bucketList.length === 0) {
     bucketList = BUCKET_SEED.map((b) => ({ ...b }));
     await repository.saveBucketList(bucketList);
+  } else {
+    // Healing pass for lists saved by older builds: split "mega-items" (a
+    // whole pasted numbered list stored as ONE item) and refresh stale seed
+    // copy, keeping the user's done/ordering.
+    const healed = healBucketList(bucketList);
+    if (healed) {
+      bucketList = healed;
+      await repository.saveBucketList(bucketList);
+    }
   }
 
   const availabilityList = await repository.getAllAvailability();
   const availabilityByDate: Record<string, Availability> = {};
   for (const a of availabilityList) availabilityByDate[a.date] = a;
 
-  // Restore previously generated plans + which of them are locked-in, so a
-  // day you planned/locked survives an app restart. Plans whose window no
-  // longer matches the day's availability (blocks resized/removed since) are
-  // healed away so no stale block floats outside a green window.
+  // Restore previously generated plans, so a day you planned survives an app
+  // restart. Plans whose window no longer matches the day's availability
+  // (blocks resized/removed since) are healed away so no stale block floats
+  // outside a green window.
   const plans = await repository.getAllPlans();
   const plansByKey: Record<string, Plan> = {};
   for (const p of plans) {
@@ -345,21 +346,9 @@ async function loadAllInto(set: SetFn): Promise<void> {
     if (stillValid) {
       plansByKey[planKey(p.date, p.window)] = p;
     } else {
-      // Healed-away plan: also silence any reminders it had scheduled.
-      await cancelPlanNotifications(p.id);
       await repository.deletePlan(p.id);
     }
   }
-
-  // Locked ids must reference a plan that still exists.
-  const keptPlanIds = new Set(Object.values(plansByKey).map((p) => p.id));
-  const lockedIds = await repository.getLockedPlanIds();
-  const keptLocked = lockedIds.filter((id) => keptPlanIds.has(id));
-  if (keptLocked.length !== lockedIds.length) {
-    await repository.saveLockedPlanIds(keptLocked);
-  }
-  const lockedPlanIds: Record<string, boolean> = {};
-  for (const id of keptLocked) lockedPlanIds[id] = true;
 
   const dayPrefsList = await repository.getAllDayPrefs();
   const dayPrefsByDate: Record<string, DayPrefs> = {};
@@ -388,11 +377,61 @@ async function loadAllInto(set: SetFn): Promise<void> {
     bucketList,
     availabilityByDate,
     plansByKey,
-    lockedPlanIds,
     dayPrefsByDate,
     seenByDate,
     loadStatus: 'ready',
   });
+}
+
+/**
+ * Repair a stored bucket list in place:
+ *   - an item whose text is itself a whole pasted list (numbered/bulleted)
+ *     splits into individual items, each with inferred tags + neighborhood
+ *   - a seed item whose copy has since been improved (e.g. the old vague
+ *     "Slice crawl" without named spots) picks up the fresh seed copy,
+ *     keeping the user's done state and position
+ * Returns the healed list, or null when nothing needed fixing.
+ */
+function healBucketList(items: BucketItem[]): BucketItem[] | null {
+  let changed = false;
+  const seedById = new Map(BUCKET_SEED.map((b) => [b.id, b]));
+  const out: BucketItem[] = [];
+  for (const item of [...items].sort((a, b) => a.sortOrder - b.sortOrder)) {
+    const seed = seedById.get(item.id);
+    if (seed && (seed.title !== item.title || seed.note !== item.note)) {
+      out.push({ ...seed, done: item.done, sortOrder: out.length });
+      changed = true;
+      continue;
+    }
+    // Only treat an item as a pasted "mega-item" when the structure is
+    // unambiguous: no note (the paste box never produces a note on a
+    // multi-item blob) AND either a real newline or at least two numbered
+    // markers. Anything looser re-splits normal titles on every launch —
+    // "Dinner at Lilia walk-in at 5. bar seats" or a title with " - " in it
+    // must never be shredded by the healer.
+    const looksMega =
+      !item.note &&
+      (/\r?\n/.test(item.title) ||
+        (item.title.match(/(^|\s)\d+[.)]\s+/g)?.length ?? 0) >= 2);
+    const parts = looksMega ? parseBucketText(item.title) : [];
+    if (parts.length > 1) {
+      changed = true;
+      for (const p of parts) {
+        out.push({
+          id: genId('bucket'),
+          title: p.title,
+          note: p.note,
+          neighborhood: p.neighborhood,
+          tags: p.tags,
+          done: item.done,
+          sortOrder: out.length,
+        });
+      }
+      continue;
+    }
+    out.push(changed ? { ...item, sortOrder: out.length } : item);
+  }
+  return changed ? out.map((b, i) => ({ ...b, sortOrder: i })) : null;
 }
 
 export const useStore = create<StoreState>((set, get) => ({
@@ -404,7 +443,6 @@ export const useStore = create<StoreState>((set, get) => ({
   dayPrefsByDate: {},
   seenByDate: {},
   planning: {},
-  lockedPlanIds: {},
   eventsNoteByDate: {},
 
   async bootstrap() {
@@ -427,16 +465,13 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   async resetApp() {
-    // Cancel any scheduled nudges, wipe disk, then reload (which re-seeds).
-    for (const id of Object.keys(get().lockedPlanIds)) {
-      await cancelPlanNotifications(id);
-    }
+    // Wipe disk, then reload (which re-seeds).
     await repository.clearAll();
     // Module-level mutable state resets too, or a "fresh" app would inherit
-    // old reshuffle nonces (non-deterministic first plans) and stale per-date
-    // queue tails from the life it just wiped.
+    // old reshuffle nonces (non-deterministic first plans) and a stale queue
+    // tail from the life it just wiped.
     for (const k of Object.keys(nonceByKey)) delete nonceByKey[k];
-    for (const k of Object.keys(planQueueByDate)) delete planQueueByDate[k];
+    planQueue = Promise.resolve();
     set({
       profile: null,
       availabilityByDate: {},
@@ -445,7 +480,6 @@ export const useStore = create<StoreState>((set, get) => ({
       dayPrefsByDate: {},
       seenByDate: {},
       planning: {},
-      lockedPlanIds: {},
       eventsNoteByDate: {},
       loadStatus: 'loading',
       loadError: undefined,
@@ -466,12 +500,16 @@ export const useStore = create<StoreState>((set, get) => ({
   async saveProfile(profile) {
     await repository.saveProfile(profile);
     set({ profile });
+    await replanAllOutOfArea(set, get);
   },
 
   async completeOnboarding(input) {
     const profile: Profile = { ...input, onboarded: true };
     await repository.saveProfile(profile);
     set({ profile });
+    // New default neighborhoods apply to every day without a day-level
+    // override — enforce the invariant across all planned days.
+    await replanAllOutOfArea(set, get);
   },
 
   async markEntered() {
@@ -512,19 +550,25 @@ export const useStore = create<StoreState>((set, get) => ({
     const merged: DayPrefs = { ...base, ...prefs, date };
     set((s) => ({ dayPrefsByDate: { ...s.dayPrefsByDate, [date]: merged } }));
     await repository.saveDayPrefs(merged);
+    // The neighborhood filter is an INVARIANT over the day's plans: narrowing
+    // it re-plans any window now holding an out-of-area stop, immediately.
+    // (Widening never violates, so this no-ops and existing plans survive.)
+    await enqueuePlan(date, () => replanOutOfAreaWindows(set, get, date));
   },
 
   async clearDayPrefs(date) {
     const cleared: DayPrefs = { date };
     set((s) => ({ dayPrefsByDate: { ...s.dayPrefsByDate, [date]: cleared } }));
     await repository.saveDayPrefs(cleared);
+    // Back to the profile defaults — same invariant as setDayPrefs.
+    await enqueuePlan(date, () => replanOutOfAreaWindows(set, get, date));
   },
 
   async clearDay(date) {
     // Route through the per-date plan queue so a clear can't interleave with an
     // in-flight runPlan for the same day — otherwise that plan could commit
     // AFTER the clear and resurrect the day. Remove free time (which also
-    // prunes the day's plans and cancels their reminders), reset any day-only
+    // prunes the day's plans), reset any day-only
     // prefs, and wipe the day's never-repeat memory. The availability change is
     // inlined (not via setAvailability, which now enqueues its own work —
     // calling it from inside this queued task would deadlock the date's queue).
@@ -540,7 +584,12 @@ export const useStore = create<StoreState>((set, get) => ({
     });
     return enqueuePlan(date, async () => {
       await applyAvailability(set, get, { date, windows: [] });
-      await get().clearDayPrefs(date);
+      // Prefs reset is INLINED (clearDayPrefs now enqueues a replan pass of
+      // its own — calling it from inside this queued task would deadlock).
+      // No replan is needed here anyway: the day's windows are gone.
+      const cleared: DayPrefs = { date };
+      set((s) => ({ dayPrefsByDate: { ...s.dayPrefsByDate, [date]: cleared } }));
+      await repository.saveDayPrefs(cleared);
       if (get().seenByDate[date]) {
         set((s) => ({ seenByDate: omit(s.seenByDate, date) }));
         await repository.saveSeenMap(get().seenByDate);
@@ -609,7 +658,22 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   async generatePlan(date, window, modifier) {
-    return enqueuePlan(date, () => runPlan(set, get, date, window, modifier));
+    // "Ensure planned", not "regenerate": auto-planning (applyAvailability)
+    // usually got here first, and a UI ensure-effect may have queued behind
+    // it — if the window already has a plan by the time this dequeues, keep
+    // it. Reshuffles go through reshufflePlan/reshuffleDay instead.
+    return enqueuePlan(date, async () => {
+      const key = planKey(date, window);
+      if (get().plansByKey[key]) {
+        // A plan already exists; clear any stale error status so the UI shows
+        // the itinerary again instead of a dead error state.
+        if (get().planning[key]?.status === 'error') {
+          set((s) => ({ planning: { ...s.planning, [key]: { status: 'idle' } } }));
+        }
+        return;
+      }
+      await runPlan(set, get, date, window, modifier);
+    });
   },
 
   async reshufflePlan(date, window, modifier) {
@@ -669,6 +733,22 @@ export const useStore = create<StoreState>((set, get) => ({
         !fresh.items.some((i) => i.id === itemId)
       ) {
         return;
+      }
+
+      // The pick itself was chosen from a PRE-queue snapshot: a concurrent
+      // swap on a sibling stop/window (or an in-flight re-plan) may have
+      // consumed this exact venue while our provider fetch ran. Re-check it
+      // against the FRESH day state — day-scoped, not week-scoped, so an
+      // intentional week-repeat fallback pick still passes, but a same-day
+      // duplicate never commits.
+      const freshDaySeen = new Set([
+        ...(get().seenByDate[date] ?? []),
+        ...Object.values(get().plansByKey)
+          .filter((p) => p.date === date)
+          .flatMap((p) => planCandidateKeys(p)),
+      ]);
+      if (freshDaySeen.has(pick.id) || freshDaySeen.has(venueKey(pick.name))) {
+        return; // consumed mid-flight; the UI offers a refreshed list
       }
 
       const slotStart = toMinutes(item.startTime);
@@ -733,18 +813,6 @@ export const useStore = create<StoreState>((set, get) => ({
       const nextPlan: Plan = { ...fresh, items: rebuildConnectors(stops) };
       set((s) => ({ plansByKey: { ...s.plansByKey, [key]: nextPlan } }));
       await repository.savePlan(nextPlan);
-
-      // A locked-in plan has per-stop reminders with the old venue baked in.
-      // Re-issue them so the reminder matches the new stop; if nothing is left
-      // to remind about, drop the lock so the UI stays honest.
-      if (get().lockedPlanIds[nextPlan.id]) {
-        const { scheduled } = await schedulePlanNotifications(nextPlan);
-        if (scheduled === 0) {
-          const cleared = omit(get().lockedPlanIds, nextPlan.id);
-          set({ lockedPlanIds: cleared });
-          await persistLocked(cleared);
-        }
-      }
       committed = true;
     });
     return committed;
@@ -760,54 +828,14 @@ export const useStore = create<StoreState>((set, get) => ({
     return (await slotCandidates(get, date, window, item)).slice(0, 12);
   },
 
-  async lockInPlan(planId): Promise<LockResult> {
-    const plan = Object.values(get().plansByKey).find((p) => p.id === planId);
-    if (!plan) return { scheduled: 0, skipped: 0, reason: 'none-upcoming' };
-
-    // Check permission up front so we can tell the user *why* nothing was
-    // scheduled instead of falsely showing "Locked in".
-    const granted = await ensureNotificationPermission();
-    if (!granted) return { scheduled: 0, skipped: 0, reason: 'permission-denied' };
-
-    const { scheduled, skipped } = await schedulePlanNotifications(plan);
-    if (scheduled === 0) {
-      // schedulePlanNotifications already cancelled any prior nudges for this
-      // plan. If it was flagged locked (e.g. a re-lock where every stop is now
-      // in the past), clear that stale flag so state matches reality.
-      if (get().lockedPlanIds[planId]) {
-        const cleared = omit(get().lockedPlanIds, planId);
-        set({ lockedPlanIds: cleared });
-        await persistLocked(cleared);
-      }
-      return { scheduled: 0, skipped, reason: 'none-upcoming' };
-    }
-
-    const nextLocked = { ...get().lockedPlanIds, [planId]: true };
-    set({ lockedPlanIds: nextLocked });
-    await persistLocked(nextLocked);
-    return { scheduled, skipped, reason: 'ok' };
-  },
-
-  async unlockPlan(planId) {
-    await cancelPlanNotifications(planId);
-    const next = { ...get().lockedPlanIds };
-    delete next[planId];
-    set({ lockedPlanIds: next });
-    await persistLocked(next);
-  },
 }));
 
-/** Persist the set of locked-in plan ids (only the truthy ones). */
-async function persistLocked(map: Record<string, boolean>): Promise<void> {
-  await repository.saveLockedPlanIds(Object.keys(map).filter((id) => map[id]));
-}
-
 /**
- * Persist an availability change and prune plans whose window no longer exists
- * (resized/removed blocks), so stale plan blocks never float outside the green
- * windows on the grid. Runs INSIDE the per-date plan queue (the in-memory
- * window update happens optimistically before enqueueing) — only call this
- * from already-queued work.
+ * Persist an availability change, prune plans whose window no longer exists
+ * (resized/removed blocks), and AUTO-PLAN every window that has no plan yet —
+ * painting free time IS planning it, and moving a window re-plans it in place.
+ * Runs INSIDE the per-date plan queue (the in-memory window update happens
+ * optimistically before enqueueing) — only call this from already-queued work.
  */
 async function applyAvailability(
   set: SetFn,
@@ -822,14 +850,23 @@ async function applyAvailability(
     ([key, p]) => p.date === date && !validKeys.has(key),
   );
   for (const [key, plan] of orphans) {
-    await cancelPlanNotifications(plan.id);
     await repository.deletePlan(plan.id);
-    set((s) => ({
-      plansByKey: omit(s.plansByKey, key),
-      lockedPlanIds: omit(s.lockedPlanIds, plan.id),
-    }));
+    set((s) => ({ plansByKey: omit(s.plansByKey, key) }));
+    // Release the orphan's venues from the day's never-repeat memory: the
+    // window merely moved/resized, so its re-plan should be free to keep the
+    // same stops. Venues still scheduled in OTHER windows stay excluded via
+    // the live-plans scan in weekSeenIds.
+    await removeSeen(set, get, date, planCandidateKeys(plan));
   }
-  if (orphans.length > 0) await persistLocked(get().lockedPlanIds);
+
+  // Auto-plan: every window without a plan gets one right away. Runs inside
+  // the per-date queue, so sibling windows still generate sequentially and
+  // see each other's never-repeat entries.
+  for (const w of availability.windows) {
+    if (!get().plansByKey[planKey(date, w)]) {
+      await runPlan(set, get, date, w, undefined);
+    }
+  }
 }
 
 /** Append candidate ids to a date's never-repeat memory and persist. */
@@ -844,6 +881,65 @@ async function addSeen(
     const merged = Array.from(new Set([...(s.seenByDate[date] ?? []), ...ids]));
     return { seenByDate: { ...s.seenByDate, [date]: merged } };
   });
+  await repository.saveSeenMap(get().seenByDate);
+}
+
+/**
+ * Enforce the neighborhood invariant for one date: any window whose plan now
+ * holds a stop OUTSIDE the day's (freshly resolved) neighborhoods is re-planned
+ * on the spot. The outgoing plan's venues are released first (same contract as
+ * a moved window) so in-area stops are free to survive the re-plan. Windows
+ * whose plans already fit are left untouched — adding neighborhoods never
+ * churns a valid plan. Location-agnostic stops (no neighborhood, e.g. the
+ * user's own bucket wishes) always fit. Runs INSIDE the plan queue.
+ */
+async function replanOutOfAreaWindows(
+  set: SetFn,
+  get: () => StoreState,
+  date: string,
+): Promise<void> {
+  const profile = get().profile;
+  if (!profile) return;
+  const prefs = resolvePrefs(profile, get().dayPrefsByDate[date]);
+  for (const w of [...(get().availabilityByDate[date]?.windows ?? [])]) {
+    const key = planKey(date, w);
+    const plan = get().plansByKey[key];
+    if (!plan) continue;
+    const violates = plan.items.some(
+      (i) =>
+        i.kind !== 'walk' &&
+        i.kind !== 'break' &&
+        !matchesNeighborhoods(i.neighborhood, prefs.neighborhoods),
+    );
+    if (!violates) continue;
+    await removeSeen(set, get, date, planCandidateKeys(plan));
+    await runPlan(set, get, date, w, plan.modifier);
+  }
+}
+
+/** Enforce the neighborhood invariant on EVERY date with free time (profile
+ *  default change). Each date's pass runs through the plan queue. */
+async function replanAllOutOfArea(set: SetFn, get: () => StoreState): Promise<void> {
+  const dates = Object.keys(get().availabilityByDate);
+  await Promise.all(
+    dates.map((date) => enqueuePlan(date, () => replanOutOfAreaWindows(set, get, date))),
+  );
+}
+
+/** Remove candidate ids from a date's never-repeat memory and persist. */
+async function removeSeen(
+  set: SetFn,
+  get: () => StoreState,
+  date: string,
+  ids: string[],
+): Promise<void> {
+  if (ids.length === 0) return;
+  const cur = get().seenByDate[date];
+  if (!cur || cur.length === 0) return;
+  const drop = new Set(ids);
+  const next = cur.filter((id) => !drop.has(id));
+  if (next.length === cur.length) return;
+  set((s) => ({ seenByDate: { ...s.seenByDate, [date]: next } }));
   await repository.saveSeenMap(get().seenByDate);
 }
 
@@ -928,10 +1024,11 @@ function pickByIntent(
 /**
  * Candidates that could fill an existing block's slot: same category (unless
  * an explicit category-override intent is given — see CROSS_CATEGORY_INTENTS),
- * allowed at that hour, fits the slot, not already used anywhere this week
- * (the never-repeat rule is absolute — an empty list is honest, never padded
- * with repeats). Price-filtered first; if that starves the list, the price
- * filter is dropped rather than returning nothing.
+ * allowed at that hour, fits the slot, and not already used this week — with
+ * a this-date-only fallback when the week-wide filter empties the pool, so a
+ * venue from another day can return rather than a dead end (never a same-day
+ * repeat). Price-filtered first; if that starves the list, the price filter
+ * is dropped rather than returning nothing.
  */
 async function slotCandidates(
   get: () => StoreState,
@@ -980,10 +1077,11 @@ async function slotCandidates(
       .filter((i) => i.kind !== 'walk' && i.kind !== 'break')
       .flatMap((i) => [i.sourceId ?? i.bucketItemId ?? i.id, venueKey(i.title)]),
   );
-  // The absolute no-repeat rule: everything already used anywhere this week is
-  // out. When this empties the list the UI says so plainly (and suggests
-  // widening neighborhoods/price) — it never quietly re-serves a repeat.
-  const seen = weekSeenIds(get(), date);
+  // The no-repeat rule: everything already used anywhere this week is out —
+  // with a fallback (below) to this-date-only exclusion when the week filter
+  // empties the pool entirely, so alternatives never hit a dead wall while
+  // the city still has venues to offer.
+  const weekSeen = weekSeenIds(get(), date);
 
   // An explicit category ask ("Coffee", "Outdoors", "Italian"...) overrides
   // this stop's current kind entirely — you should be able to turn a dinner
@@ -992,25 +1090,59 @@ async function slotCandidates(
   // (a "cheaper dinner" should still be dinner).
   const crossCategory = intent != null && CROSS_CATEGORY_INTENTS.has(intent);
 
-  const pool = [...fetched, ...buckets].filter((c) => {
-    if (inPlan.has(c.id) || seen.has(c.id)) return false;
-    if (inPlan.has(venueKey(c.name)) || seen.has(venueKey(c.name))) return false;
-    if (!crossCategory && !sameCategory(c.kind, item.kind)) return false;
-    // Same deliberate-override reasoning as the category bypass above: tapping
-    // "Coffee" on a dinner stop is the user choosing that venue type AT that
-    // time on purpose, so the normal meal/drink-hour rhythm (which exists to
-    // keep the ORIGINAL schedule sensible) shouldn't silently block it too.
-    if (!crossCategory && !allowedStart(c, slotStart)) return false;
-    // Fixed-time candidates must actually cover this slot.
-    if (c.startTime && c.endTime) {
-      if (toMinutes(c.startTime) > slotStart + 30) return false;
-      if (toMinutes(c.endTime) < slotStart + 30) return false;
-    } else if (candidateDuration(c) > slotLen + 30) {
-      // Flexible candidates can run a little long but not absurdly so.
-      return false;
+  const buildPool = (seen: Set<string>) =>
+    [...fetched, ...buckets].filter((c) => {
+      if (inPlan.has(c.id) || seen.has(c.id)) return false;
+      if (inPlan.has(venueKey(c.name)) || seen.has(venueKey(c.name))) return false;
+      if (!crossCategory && !sameCategory(c.kind, item.kind)) return false;
+      // Same deliberate-override reasoning as the category bypass above: tapping
+      // "Coffee" on a dinner stop is the user choosing that venue type AT that
+      // time on purpose, so the normal meal/drink-hour rhythm (which exists to
+      // keep the ORIGINAL schedule sensible) shouldn't silently block it too.
+      if (!crossCategory && !allowedStart(c, slotStart)) return false;
+      // Fixed-time candidates must actually cover this slot.
+      if (c.startTime && c.endTime) {
+        if (toMinutes(c.startTime) > slotStart + 30) return false;
+        if (toMinutes(c.endTime) < slotStart + 30) return false;
+      } else if (candidateDuration(c) > slotLen + 30) {
+        // Flexible candidates can run a little long but not absurdly so.
+        return false;
+      }
+      return true;
+    });
+
+  // Week-wide no-repeat first; when that leaves nothing that can satisfy the
+  // ask, fall back to excluding only this date's own history — a venue from
+  // earlier in the week beats a dead "nothing fits" wall, and an explicit
+  // cuisine/vibe tap ("Thai") should surface the area's Thai spot even if it
+  // appeared on another day. Same-day repeats stay impossible.
+  const satisfiesIntent = (c: Candidate): boolean => {
+    if (intent == null) return true;
+    if (isCuisineIntent(intent)) {
+      return (c.cuisine ?? '').toLowerCase() === CUISINE_INTENTS[intent].toLowerCase();
     }
-    return true;
-  });
+    if (isTagIntent(intent)) {
+      const want = TAG_INTENTS[intent];
+      return c.tags.some((t) => t.toLowerCase() === want);
+    }
+    // Mirror pickByIntent's real predicates for the constrained relative
+    // intents, so "the week pool can't satisfy this ask" actually triggers
+    // the day-only fallback instead of returning an unusable pool.
+    if (intent === 'indoor') {
+      return !c.tags.some((t) => t.toLowerCase() === 'outdoors');
+    }
+    if (intent === 'cheaper' || intent === 'pricier') {
+      const cur = item.priceTier ?? 2;
+      return (
+        c.priceTier != null && (intent === 'cheaper' ? c.priceTier < cur : c.priceTier > cur)
+      );
+    }
+    return true; // 'surprise' fits any pool
+  };
+  let pool = buildPool(weekSeen);
+  if (!pool.some(satisfiesIntent)) {
+    pool = buildPool(new Set(get().seenByDate[date] ?? []));
+  }
 
   // Keep "Other options" STRICTLY in the day's neighborhoods (location-agnostic
   // picks with no set area always qualify). This is a hard filter with NO
@@ -1089,7 +1221,7 @@ async function runPlan(
         : {};
     });
 
-    const plan = await defaultPlanner.plan({
+    const baseReq = {
       date,
       window,
       neighborhoods: prefs.neighborhoods,
@@ -1104,11 +1236,31 @@ async function runPlan(
       places: placesRes.candidates,
       modifier,
       nonce: nonceByKey[key] ?? 0,
-      // Exclude everything used anywhere this Mon-Sun week, not just this date,
-      // so the same venue never shows up on two days of one week.
-      excludeIds: [...weekSeenIds(get(), date)],
       holiday: holidayFor(date),
+    };
+    // Exclude everything used anywhere this Mon-Sun week, not just this date,
+    // so the same venue never shows up on two days of one week.
+    let plan = await defaultPlanner.plan({
+      ...baseReq,
+      excludeIds: [...weekSeenIds(get(), date)],
     });
+
+    // NYC never runs dry: if the week-wide no-repeat rule left this window
+    // with NOTHING (catalog exhausted for these neighborhoods), retry
+    // excluding only THIS DATE's history — a venue from earlier in the week
+    // beats a dead window. Same-day repeats stay impossible.
+    const hasStops = (p: Plan) =>
+      p.items.some((i) => i.kind !== 'walk' && i.kind !== 'break');
+    if (!hasStops(plan)) {
+      const daySeen = new Set([
+        ...(get().seenByDate[date] ?? []),
+        ...Object.values(get().plansByKey)
+          .filter((p) => p.date === date)
+          .flatMap((p) => planCandidateKeys(p)),
+      ]);
+      const retry = await defaultPlanner.plan({ ...baseReq, excludeIds: [...daySeen] });
+      if (hasStops(retry)) plan = retry;
+    }
 
     // The planner awaited: if the user removed or resized this window while
     // it ran, drop the result instead of resurrecting a plan for a window
@@ -1123,35 +1275,14 @@ async function runPlan(
 
     await repository.savePlan(plan);
 
-    // A reshuffle invalidates any previously locked-in notifications for the
-    // prior plan at this window; cancel them, and persist the lock removal
-    // RIGHT beside savePlan (before the in-memory commit below) so a crash in
-    // between can't leave the superseded plan's lock flag persisted against a
-    // plan id that no longer exists.
-    const prior = get().plansByKey[key];
-    const invalidatesPrior = !!prior && prior.id !== plan.id;
-    if (invalidatesPrior) {
-      await cancelPlanNotifications(prior!.id);
-      if (get().lockedPlanIds[prior!.id]) {
-        await persistLocked(omit(get().lockedPlanIds, prior!.id));
-      }
-    }
-
     // Everything just suggested joins the day's never-repeat memory right away,
     // so a sibling window generated in the same pass (or any later reshuffle)
     // cannot serve the same stop twice on one day.
     await addSeen(set, get, date, planCandidateKeys(plan));
 
-    // Derive lockedPlanIds from the FRESHEST state inside the updater so a
-    // concurrent lock/unlock (which may have run during the awaits above) is
-    // not clobbered by a stale snapshot.
     set((s) => ({
       plansByKey: { ...s.plansByKey, [key]: plan },
       planning: { ...s.planning, [key]: { status: 'idle' } },
-      lockedPlanIds:
-        invalidatesPrior && s.lockedPlanIds[prior!.id]
-          ? omit(s.lockedPlanIds, prior!.id)
-          : s.lockedPlanIds,
     }));
   } catch (err) {
     set((s) => ({

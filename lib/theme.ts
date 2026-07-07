@@ -1,60 +1,67 @@
 // =============================================================================
 // OutNYC — design tokens (lib/theme.ts)
 // =============================================================================
-// "Editorial & warm" — a printed NYC nightlife-zine look: cream paper, charcoal
-// ink, a Fraunces serif display face, warm terracotta/ochre accents, and
-// time-of-day sky gradients for the illustrated skyline art. No hardcoded hex
-// in screens — import { colors, font, ... } and use these tokens.
+// "Subway wayfinding" — modern-art simplicity with an industrial city edge:
+// station-white canvas, black sign bars, MTA line-color roundels for stop
+// kinds, one caution-yellow detail, and a Helvetica-grade grotesk (Inter,
+// loaded in app/_layout.tsx) everywhere. Geometry is sharp: bars and perfect
+// circles, hairline rules, minimal radius. No hardcoded hex in screens —
+// import { colors, font, ... } and use these tokens.
 // =============================================================================
 
 export const colors = {
-  // Warm paper surfaces.
-  bg: '#F4EEE1', // cream paper
-  surface: '#FBF7EC', // lighter card paper
-  surfaceAlt: '#EDE4D1', // tan panel
-  border: '#E0D4BC', // warm hairline
-  borderStrong: '#CBB99B',
+  // Station-white canvas.
+  bg: '#FFFFFF',
+  surface: '#FFFFFF', // cards read as bordered panels, not tinted slabs
+  surfaceAlt: '#F2F2EF', // recessed panel / disabled fill
+  border: '#E4E4E1', // hairline on white
+  borderStrong: '#0B0B0B', // signage rule: emphasized outlines are black
 
   // Ink.
-  text: '#211C17', // warm charcoal ink
-  textMuted: '#6A5F51', // warm brown-gray
-  textFaint: '#746A5B', // lightest ink that still passes WCAG AA on bg + surface
+  text: '#0B0B0B', // sign black
+  textMuted: '#5C5C58',
+  textFaint: '#6E6E6A', // lightest ink that still passes WCAG AA on white
 
-  // Warm editorial accents.
-  accent: '#BE3B24', // deep terracotta / vermilion
-  accentSoft: '#F1DDCF', // soft terracotta wash
-  secondary: '#1E6F5C', // deep teal-green
-  secondarySoft: '#D9E9E1',
-  gold: '#B07A22', // ochre / brass
-  goldSoft: '#F0E3C6',
+  // Wayfinding accents.
+  accent: '#0039A6', // MTA blue — interactive: links, selected chips
+  accentSoft: '#E7EDF8', // pale blue wash behind selected chips
+  secondary: '#00933C', // MTA green
+  secondarySoft: '#E2F3E8',
+  gold: '#FCCC0A', // caution / N-Q-R yellow — the one decorative color
+  goldSoft: '#FFF6D2',
 
-  // Semantic (kept warm).
-  success: '#2E7D5B',
-  warning: '#B07A22',
-  danger: '#B23A2E',
+  // Semantic.
+  success: '#00733D',
+  warning: '#946200',
+  danger: '#C41E24',
 
-  // Per-kind tints for plan items (warm, editorial).
-  event: '#7A4FA3', // plum
-  restaurant: '#BE3B24', // terracotta
-  bar: '#B07A22', // brass
-  activity: '#1E6F5C', // teal
-  bucket: '#2E7D5B', // green
-  walk: '#9C9082', // faint
-  break: '#B4A98F',
+  // Per-kind roundel colors (MTA line bullets).
+  event: '#B933AD', // 7 line purple
+  restaurant: '#EE352E', // 1-2-3 red
+  bar: '#FF6319', // B-D-F-M orange
+  activity: '#0039A6', // A-C-E blue
+  bucket: '#00933C', // 4-5-6 green
+  walk: '#A7A9AC', // L gray
+  break: '#8D8F92',
 
   // Calendar blocks.
-  free: '#2E6B58', // deep muted green: available time
-  freeSoft: '#DDE9E2',
-  planned: '#3D4A63', // muted navy: planned blocks
-  plannedPressed: '#33405A',
-  gridLine: '#E7DECB', // hairline calendar rules
+  free: '#00933C', // available time reads as go-green
+  freeSoft: '#E2F3E8',
+  planned: '#0E0E0E', // plan blocks are little black signs
+  plannedPressed: '#2B2B2B',
+  gridLine: '#EBEBE8',
 
-  // Ink used on top of colored/photo art.
-  onArt: '#FBF7EC',
-  onArtMuted: '#E8DCC6',
+  // Solid black sign bars (headers, heroes).
+  sign: '#0B0B0B',
+
+  // Ink used on top of black signs / colored roundels.
+  onArt: '#FFFFFF',
+  onArtMuted: '#C9C9C5',
+  // Ink used on top of BRIGHT fills (MTA-blue buttons, green chips).
+  onAccent: '#FFFFFF',
 
   // Misc.
-  overlay: 'rgba(20,16,12,0.55)',
+  overlay: 'rgba(0,0,0,0.5)',
   transparent: 'transparent',
 } as const;
 
@@ -67,24 +74,26 @@ export const spacing = {
   xxl: 32,
 } as const;
 
-// Restrained, near-flat corners: editorial print, not a playful app.
+// Signage geometry: bars and circles. Corners stay near-sharp; the only true
+// curve in the system is the pill/roundel.
 export const radius = {
-  sm: 4,
-  md: 6,
-  lg: 10,
-  xl: 14,
+  sm: 2,
+  md: 4,
+  lg: 8,
+  xl: 12,
   pill: 999,
 } as const;
 
 export const font = {
-  // Fraunces serif display faces (loaded in app/_layout.tsx). Body/UI text uses
-  // the system sans for contrast — that pairing is the editorial look.
+  // Inter — the Helvetica of screens (loaded in app/_layout.tsx). The token
+  // KEYS keep their old names so no component changes: "serif" now simply
+  // means body-regular, "display" means the heaviest signage weight.
   family: {
-    display: 'Fraunces_700Bold',
-    displayBlack: 'Fraunces_900Black',
-    heading: 'Fraunces_600SemiBold',
-    serif: 'Fraunces_400Regular',
-    serifItalic: 'Fraunces_400Regular_Italic',
+    display: 'Inter_800ExtraBold',
+    displayBlack: 'Inter_900Black',
+    heading: 'Inter_600SemiBold',
+    serif: 'Inter_400Regular',
+    serifItalic: 'Inter_500Medium',
   },
   size: {
     xs: 12,
@@ -96,7 +105,7 @@ export const font = {
     heroSm: 30, // plan hero titles
     display: 36,
     hero: 44,
-    wordmark: 60, // welcome wordmark
+    wordmark: 56, // welcome wordmark
   },
   weight: {
     regular: '400',
@@ -114,62 +123,6 @@ export function withAlpha(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-// ---- Illustrated NYC skyline — time-of-day palettes -------------------------
-
-export type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night';
-
-/** Pick a sky mood from an 'HH:MM' window start. */
-export function timeOfDay(hhmm: string): TimeOfDay {
-  const h = parseInt(hhmm.slice(0, 2), 10) || 0;
-  if (h >= 5 && h < 11) return 'morning';
-  if (h >= 11 && h < 16) return 'afternoon';
-  if (h >= 16 && h < 20) return 'evening';
-  return 'night';
-}
-
-/** Gradient sky stops (top -> horizon) + building + accent tones per mood. */
-export const sky: Record<
-  TimeOfDay,
-  { top: string; mid: string; horizon: string; building: string; buildingFar: string; sun: string; ink: string }
-> = {
-  morning: {
-    top: '#8FB4D0',
-    mid: '#CFD9D6',
-    horizon: '#F3D9B0',
-    building: '#3B3A42',
-    buildingFar: '#6E7486',
-    sun: '#F7E4A8',
-    ink: '#FBF7EC',
-  },
-  afternoon: {
-    top: '#6FA8D6',
-    mid: '#AECBE0',
-    horizon: '#EFE3BD',
-    building: '#37404A',
-    buildingFar: '#6C7E90',
-    sun: '#FBEFC0',
-    ink: '#FBF7EC',
-  },
-  evening: {
-    top: '#4A356E',
-    mid: '#B85A63',
-    horizon: '#F0A85E',
-    building: '#241C2B',
-    buildingFar: '#5A3F63',
-    sun: '#F6C877',
-    ink: '#FBF7EC',
-  },
-  night: {
-    top: '#0F1B34',
-    mid: '#2A2447',
-    horizon: '#7A3E58',
-    building: '#0B1220',
-    buildingFar: '#25203A',
-    sun: '#EBD9A0',
-    ink: '#FBF7EC',
-  },
-} as const;
-
 export type KindColorKey =
   | 'event'
   | 'restaurant'
@@ -179,9 +132,9 @@ export type KindColorKey =
   | 'walk'
   | 'break';
 
-/** Color for a plan-item kind. */
+/** Roundel color for a plan-item kind. */
 export function kindColor(kind: KindColorKey): string {
   return colors[kind];
 }
 
-export const theme = { colors, spacing, radius, font, sky } as const;
+export const theme = { colors, spacing, radius, font } as const;

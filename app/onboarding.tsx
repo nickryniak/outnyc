@@ -5,7 +5,6 @@
 // "Edit preferences" screen (opened from Settings with ?edit=1).
 // =============================================================================
 
-import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
@@ -19,7 +18,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Skyline } from '../components/Skyline';
 import { Body, Button, Caption, Chip, Eyebrow } from '../components/ui';
 import { INTEREST_TAGS, NEIGHBORHOODS, PRICE_TIERS } from '../lib/constants';
 import { useStore } from '../lib/store';
@@ -90,17 +88,10 @@ export default function Onboarding() {
         contentContainerStyle={[styles.scroll, { paddingTop: insets.top }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero */}
+        {/* Station-sign hero */}
         <View style={styles.hero}>
-          <Skyline variant="evening" height={168} />
-          <LinearGradient
-            colors={['rgba(18,14,10,0.15)', 'transparent', 'rgba(18,14,10,0.72)']}
-            style={styles.heroScrim}
-          />
-          <View style={styles.heroText}>
-            <Text style={styles.heroEyebrow}>{isEdit ? 'YOUR USUAL PREFERENCES' : 'NEW YORK CITY'}</Text>
-            <Text style={styles.heroTitle}>{isEdit ? 'Edit your defaults' : 'OutNYC'}</Text>
-          </View>
+          <Text style={styles.heroEyebrow}>{isEdit ? 'YOUR USUAL PREFERENCES' : 'NEW YORK CITY'}</Text>
+          <Text style={styles.heroTitle}>{isEdit ? 'Edit your defaults' : 'OutNYC'}</Text>
         </View>
 
         <View style={styles.bodyPad}>
@@ -200,17 +191,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
   },
   hero: {
-    height: 168,
-    overflow: 'hidden',
-  },
-  heroScrim: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  heroText: {
-    position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.lg,
+    backgroundColor: colors.sign,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xxl,
+    paddingBottom: spacing.lg,
+    borderBottomWidth: 3,
+    borderBottomColor: colors.gold,
   },
   heroEyebrow: {
     color: colors.onArtMuted,

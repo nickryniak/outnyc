@@ -23,49 +23,49 @@ const FIXED: Record<string, Holiday> = {
     name: "New Year's Day",
     short: 'New Year',
     boostTags: ['walk', 'outdoors', 'food'],
-    color: '#B07A22',
+    color: '#946200',
   },
   '02-14': {
     name: "Valentine's Day",
     short: 'Valentine’s',
     boostTags: ['food', 'bar'],
-    color: '#B23A2E',
+    color: '#C41E24',
   },
   '03-17': {
     name: "St. Patrick's Day",
     short: 'St. Paddy’s',
     boostTags: ['bar', 'live music'],
-    color: '#1E6F5C',
+    color: '#00733D',
   },
   '06-19': {
     name: 'Juneteenth',
     short: 'Juneteenth',
     boostTags: ['live music', 'outdoors', 'art'],
-    color: '#B23A2E',
+    color: '#C41E24',
   },
   '07-04': {
     name: 'Independence Day',
     short: 'July 4th',
     boostTags: ['outdoors', 'rooftop', 'bar'],
-    color: '#B23A2E',
+    color: '#C41E24',
   },
   '10-31': {
     name: 'Halloween',
     short: 'Halloween',
     boostTags: ['bar', 'live music', 'comedy'],
-    color: '#B07A22',
+    color: '#946200',
   },
   '12-25': {
     name: 'Christmas Day',
     short: 'Christmas',
     boostTags: ['walk', 'outdoors', 'film'],
-    color: '#1E6F5C',
+    color: '#00733D',
   },
   '12-31': {
     name: "New Year's Eve",
     short: 'NYE',
     boostTags: ['bar', 'live music', 'rooftop'],
-    color: '#B07A22',
+    color: '#946200',
   },
 };
 
@@ -104,7 +104,7 @@ export function holidayFor(ymd: string): Holiday | null {
       name: 'Memorial Day',
       short: 'Memorial Day',
       boostTags: ['outdoors', 'walk'],
-      color: '#1E6F5C',
+      color: '#00733D',
     };
   }
   if (m === 6 && d === lastWeekday(y, 6, 0)) {
@@ -112,7 +112,7 @@ export function holidayFor(ymd: string): Holiday | null {
       name: 'NYC Pride March',
       short: 'Pride',
       boostTags: ['outdoors', 'bar', 'live music'],
-      color: '#7A4FA3',
+      color: '#7B2E9E',
     };
   }
   if (m === 9 && d === nthWeekday(y, 9, 1, 1)) {
@@ -120,7 +120,7 @@ export function holidayFor(ymd: string): Holiday | null {
       name: 'Labor Day',
       short: 'Labor Day',
       boostTags: ['outdoors', 'walk'],
-      color: '#1E6F5C',
+      color: '#00733D',
     };
   }
   if (m === 11 && d === nthWeekday(y, 11, 0, 1)) {
@@ -128,7 +128,7 @@ export function holidayFor(ymd: string): Holiday | null {
       name: 'NYC Marathon',
       short: 'Marathon',
       boostTags: ['outdoors', 'walk'],
-      color: '#B07A22',
+      color: '#946200',
     };
   }
   if (m === 11 && d === nthWeekday(y, 11, 4, 4)) {
@@ -136,7 +136,7 @@ export function holidayFor(ymd: string): Holiday | null {
       name: 'Thanksgiving',
       short: 'Thanksgiving',
       boostTags: ['food', 'walk'],
-      color: '#B07A22',
+      color: '#946200',
     };
   }
   return null;

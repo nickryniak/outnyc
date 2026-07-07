@@ -3,8 +3,8 @@
 A single-user (no login) NYC plan-maker for your phone. Tell it when you're free,
 which neighborhood you want to be in, and your price range — it pulls events and
 restaurants and packs each free-time window into an **ordered, walkable
-itinerary**, weaving in your bucket-list items, with local-notification nudges so
-you actually go.
+itinerary**, weaving in your bucket-list items. Painting a free-time window
+plans it instantly — and moving the window re-plans it.
 
 Built with **Expo (React Native) + TypeScript**. Runs in **Expo Go** on your
 iPhone with **no native build step**.
@@ -47,9 +47,9 @@ mock data. **No keys. No cards. No accounts.**
   cheaper / surprise me).
 - **Bucket list** — manage aspirational items; the planner prioritizes weaving
   them in when they fit.
-- **Settings** — view your defaults, enable local notifications, and see which
-  data sources are detected as **Live** vs **Mock** (going live is opt-in via a
-  local `.env` — Settings shows the status, it doesn't store keys).
+- **Settings** — view your defaults and see which data sources are detected as
+  **Live** vs **Mock** (going live is opt-in via a local `.env` — Settings
+  shows the status, it doesn't store keys).
 
 Everything persists on-device via AsyncStorage (behind a `Repository`
 interface, so a Supabase backend can be added later without touching screens).
@@ -64,7 +64,6 @@ interface, so a Supabase backend can be added later without touching screens).
 | Restaurants/places| Curated NYC seed places                      | **Google Places API (New)** ¹                       | **Yes**       |
 | Day planning      | **Deterministic on-device heuristic**        | Anthropic via secure Supabase **edge function** ²   | No ³          |
 | Persistence       | On-device AsyncStorage                       | Supabase (future swap)                              | No (free tier)|
-| Notifications     | Local notifications (Expo)                   | same — always local                                 | No            |
 | Booking/Tickets   | "Book"/"Tickets" deep-link out via `Linking` | same — **never auto-books**                         | No            |
 
 ¹ The live branches are **real fetches, not stubs**. With a key present, the
@@ -225,7 +224,7 @@ app/                     # expo-router screens (file-based routing)
   welcome.tsx            #   full-bleed sunset-skyline landing screen
   onboarding.tsx         #   party size / neighborhoods / price / interests
   (tabs)/                #   bottom tabs: week, bucket, settings
-  plan/[date].tsx        #   printed-guide day plan: itinerary + lock-in
+  plan/[date].tsx        #   full-day view: numbered itinerary per window
 components/              # ui primitives + WeekGrid, DayPanel, PlanItemCard, Skyline
 lib/
   types.ts               # domain types (Profile, Availability, BucketItem, Plan, PlanItem, Feedback)
@@ -238,8 +237,9 @@ lib/
   labels.ts              # human stop labels ("LUNCH · Buvette")
   maps.ts                # Directions deep-link builder (always returns a usable link)
   confirm.ts             # cross-platform destructive confirm (web-safe)
-  store.ts               # zustand store (wires repo + planner + providers + notifications)
-  notifications.ts       # local-only expo-notifications scheduling
+  store.ts               # zustand store (wires repo + planner + providers; auto-planning)
+  bucketParse.ts         # pasted-list parsing (numbered lists -> bucket items)
+  catalog/               # generated ~450-venue curated NYC catalog (per area)
   storage/               # Repository interface + AsyncStorage implementation
   planner/               # Planner interface + deterministic heuristic (default)
   providers/             # data sources (every one degrades gracefully)

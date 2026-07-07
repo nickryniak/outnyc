@@ -1,27 +1,23 @@
 // =============================================================================
 // OutNYC — plan a day (app/plan/[date].tsx)
 // =============================================================================
-// A printed-guide layout: each free-time window gets a "sunset over Manhattan"
-// skyline hero, a numbered itinerary, and lock-in. Reshuffle and swap live on
-// the calendar screen, not here.
+// A city-guide layout: each free-time window gets a skyline hero and a
+// numbered itinerary. Reshuffle and swap live on the calendar screen, not here.
 // =============================================================================
 
-import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { PlanItemCard } from '../../components/PlanItemCard';
-import { Skyline } from '../../components/Skyline';
 import {
-  Button,
   Caption,
   EmptyView,
   ErrorView,
   LoadingView,
 } from '../../components/ui';
 import { planKey, useStore } from '../../lib/store';
-import { colors, font, radius, spacing, timeOfDay } from '../../lib/theme';
+import { colors, font, radius, spacing } from '../../lib/theme';
 import { format12h, formatWindow, relativeDayLabel } from '../../lib/time';
 import type { Plan, PriceTier, TimeWindow } from '../../lib/types';
 
@@ -74,38 +70,18 @@ function WindowPlan({ date, window }: { date: string; window: TimeWindow }) {
   const key = planKey(date, window);
   const plan = useStore((s) => s.plansByKey[key]);
   const planning = useStore((s) => s.planning[key]);
-  const locked = useStore((s) => (plan ? !!s.lockedPlanIds[plan.id] : false));
 
   const generatePlan = useStore((s) => s.generatePlan);
-  const lockInPlan = useStore((s) => s.lockInPlan);
-  const unlockPlan = useStore((s) => s.unlockPlan);
-
-  const [lockMsg, setLockMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!plan && (!planning || planning.status === 'idle')) void generatePlan(date, window);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  const isPlanning = planning?.status === 'planning';
-
-  async function onLock(planId: string) {
-    const res = await lockInPlan(planId);
-    if (res.reason === 'ok') {
-      // Honest about BOTH counts: a stop starting inside the ~20-minute lead
-      // window gets no nudge, and silently omitting that reads as "all set".
-      const base = `Locked in. ${res.scheduled} reminder${res.scheduled === 1 ? '' : 's'} set.`;
-      setLockMsg(
-        res.skipped > 0
-          ? `${base} ${res.skipped} stop${res.skipped === 1 ? ' starts' : 's start'} too soon to remind.`
-          : base,
-      );
-    } else if (res.reason === 'permission-denied') {
-      setLockMsg('Notifications are off. Turn them on in your phone settings to get nudges.');
-    } else {
-      setLockMsg('Nothing to remind you about. Every stop starts too soon or has passed.');
-    }
-  }
+  // A not-yet-planned, not-errored window is LOADING (the mount effect is
+  // about to plan it) — never "Nothing fit this window" on first paint.
+  const isPlanning =
+    planning?.status === 'planning' || (!plan && planning?.status !== 'error');
 
   // Number the real stops by their position among non-connectors (walks and
   // breaks are unnumbered), instead of mutating a counter mid-render.
@@ -113,17 +89,10 @@ function WindowPlan({ date, window }: { date: string; window: TimeWindow }) {
 
   return (
     <View style={styles.windowBlock}>
-      {/* Skyline hero */}
+      {/* Station-sign hero */}
       <View style={styles.hero}>
-        <Skyline variant={timeOfDay(window.start)} height={186} />
-        <LinearGradient
-          colors={['transparent', 'rgba(18,14,10,0.15)', 'rgba(18,14,10,0.78)']}
-          style={styles.heroScrim}
-        />
-        <View style={styles.heroText}>
-          <Text style={styles.heroEyebrow}>{relativeDayLabel(date).toUpperCase()}</Text>
-          <Text style={styles.heroTitle}>{formatWindow(window)}</Text>
-        </View>
+        <Text style={styles.heroEyebrow}>{relativeDayLabel(date).toUpperCase()}</Text>
+        <Text style={styles.heroTitle}>{formatWindow(window)}</Text>
       </View>
 
       {plan && plan.items.length > 0 ? (
@@ -139,12 +108,10 @@ function WindowPlan({ date, window }: { date: string; window: TimeWindow }) {
           message={planning.error ?? 'Could not build a plan.'}
           onRetry={() => void generatePlan(date, window, plan?.modifier)}
         />
-      ) : !plan ? (
-        <Button label="Plan this day" onPress={() => void generatePlan(date, window)} />
-      ) : plan.items.length === 0 ? (
+      ) : !plan || plan.items.length === 0 ? (
         <EmptyView
           title="Nothing fit this window"
-          message="Try a longer window, a wider price range, or a different reshuffle."
+          message="Try a longer window, a wider price range, or different neighborhoods."
         />
       ) : (
         <View style={styles.itinerary}>
@@ -160,33 +127,6 @@ function WindowPlan({ date, window }: { date: string; window: TimeWindow }) {
           })}
         </View>
       )}
-
-      {plan ? (
-        <View style={styles.controls}>
-          {plan.items.length > 0 ? (
-            <Button
-              label={locked ? 'Reschedule reminders' : 'Lock in and remind me'}
-              variant={locked ? 'secondary' : 'primary'}
-              disabled={isPlanning}
-              onPress={() => void onLock(plan.id)}
-            />
-          ) : null}
-          {locked ? (
-            <Button
-              label="Cancel reminders"
-              variant="ghost"
-              onPress={() => {
-                setLockMsg('Reminders cancelled.');
-                void unlockPlan(plan.id);
-              }}
-            />
-          ) : null}
-          {lockMsg ? <Caption muted>{lockMsg}</Caption> : null}
-          {locked && !lockMsg ? (
-            <Caption muted>We&apos;ll nudge you ~20 min before each stop.</Caption>
-          ) : null}
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -205,20 +145,13 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   hero: {
-    height: 186,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  heroScrim: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  heroText: {
-    position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.lg,
+    backgroundColor: colors.sign,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    justifyContent: 'flex-end',
+    borderBottomWidth: 3,
+    borderBottomColor: colors.gold,
   },
   heroEyebrow: {
     color: colors.onArtMuted,
@@ -245,8 +178,5 @@ const styles = StyleSheet.create({
   },
   loadingBox: {
     height: 160,
-  },
-  controls: {
-    gap: spacing.md,
   },
 });

@@ -250,10 +250,10 @@ insert into public.bucket_list
 values
   ('00000000-0000-0000-0000-000000000000', 'Catch sunset on the High Line',          'Best near sunset; walk the whole stretch.', 'Chelsea',          1, array['outdoors','walk'],      false, 0),
   ('00000000-0000-0000-0000-000000000000', 'Jazz set at the Village Vanguard',        'Reserve ahead; iconic basement room.',      'West Village',     3, array['live music'],          false, 1),
-  ('00000000-0000-0000-0000-000000000000', 'Slice crawl through the East Village',    'Hit three classic spots in one night.',     'East Village',     1, array['food'],                false, 2),
+  ('00000000-0000-0000-0000-000000000000', 'Slice crawl: 2 Bros, Stromboli, then Artichoke', 'Three East Village classics in one walkable night — St. Marks Pl to 14th St, one slice each.', 'East Village', 1, array['food'],       false, 2),
   ('00000000-0000-0000-0000-000000000000', 'Smorgasburg on a Saturday',               'Go hungry; cash + card.',                   'Williamsburg',     2, array['food','outdoors'],     false, 3),
-  ('00000000-0000-0000-0000-000000000000', 'Late-night ramen in the East Village',    'For after a show.',                         'East Village',     2, array['food'],                false, 4),
-  ('00000000-0000-0000-0000-000000000000', 'Rooftop drinks in Lower Manhattan',       'Sunset views over the harbor.',             'Financial District',3, array['bar'],                 false, 5),
+  ('00000000-0000-0000-0000-000000000000', 'Late-night ramen at Ippudo',              'Rich pork-broth bowls on 4th Ave — the kitchen runs late for the after-show crowd.', 'East Village', 2, array['food','late-night'], false, 4),
+  ('00000000-0000-0000-0000-000000000000', 'Rooftop drinks at Overstory',             'Sunset over the harbor from the 64th floor — reserve ahead.', 'Financial District', 3, array['bar','rooftop'],  false, 5),
   ('00000000-0000-0000-0000-000000000000', 'Brooklyn Bridge walk at golden hour',     'Start Manhattan side, end in DUMBO.',       'DUMBO',            1, array['outdoors','walk'],     false, 6),
   ('00000000-0000-0000-0000-000000000000', 'See a show at the Comedy Cellar',         'Standby line moves fast on weeknights.',    'West Village',     2, array['comedy'],              false, 7)
 on conflict do nothing;

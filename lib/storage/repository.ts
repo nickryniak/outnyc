@@ -36,10 +36,6 @@ export interface Repository {
   savePlan(plan: Plan): Promise<void>;
   deletePlan(planId: string): Promise<void>;
 
-  // ---- locked-in plans (ids with scheduled notifications) ----
-  getLockedPlanIds(): Promise<string[]>;
-  saveLockedPlanIds(ids: string[]): Promise<void>;
-
   // ---- per-day planner preferences (one row per date) ----
   getAllDayPrefs(): Promise<DayPrefs[]>;
   saveDayPrefs(prefs: DayPrefs): Promise<void>;

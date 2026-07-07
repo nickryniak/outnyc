@@ -104,12 +104,20 @@ const NB_ABBR: Record<string, string> = {
   Williamsburg: 'Wburg',
   Chelsea: 'Chelsea',
   SoHo: 'SoHo',
+  Nolita: 'Nolita',
+  Chinatown: 'Ctown',
+  Tribeca: 'Tribeca',
   Greenpoint: 'Grnpt',
   DUMBO: 'DUMBO',
   'Financial District': 'FiDi',
+  Midtown: 'Midtown',
+  'Upper East Side': 'UES',
+  'Upper West Side': 'UWS',
   Harlem: 'Harlem',
   Astoria: 'Astoria',
+  'Long Island City': 'LIC',
   Bushwick: 'Bushwk',
+  'Park Slope': 'Pk Slope',
 };
 
 function nbAbbr(name: string): string {
@@ -268,7 +276,7 @@ const FreeBlockEditor = memo(function FreeBlockEditor({
         onPress={() => onRemove(date, w)}
         style={styles.freeBlockDelete}
       >
-        <X size={11} color={colors.onArt} strokeWidth={2.5} />
+        <X size={11} color={colors.onAccent} strokeWidth={2.5} />
       </Pressable>
       <View
         {...topPan.panHandlers}
@@ -653,7 +661,7 @@ export function WeekGrid({
                 >
                   <Text
                     maxFontSizeMultiplier={MAX_FONT_SCALE}
-                    style={[styles.dayNum, isToday && { color: colors.onArt }]}
+                    style={[styles.dayNum, isToday && { color: colors.onAccent }]}
                   >
                     {dayOfMonth(d)}
                   </Text>
@@ -987,5 +995,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     borderRadius: radius.md,
   },
-  modalDoneText: { color: colors.onArt, fontSize: font.size.md, fontWeight: font.weight.semibold },
+  modalDoneText: { color: colors.onAccent, fontSize: font.size.md, fontWeight: font.weight.semibold },
 });

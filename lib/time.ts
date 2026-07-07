@@ -254,9 +254,9 @@ export function format12h(hhmm: string): string {
 /**
  * Build a JS Date for a NY-local (date, 'HH:MM') wall-clock instant — the TRUE
  * America/New_York moment, regardless of the device's own timezone. Used to
- * compute notification trigger times. On a device already set to NY this yields
- * exactly the same instant as before (DST included); on a UTC emulator, CI, or a
- * traveling user it no longer fires hours off.
+ * build UTC instants for live-event provider queries. On a device already set
+ * to NY this yields exactly the same instant (DST included); on a UTC
+ * emulator, CI, or a traveling user it no longer lands hours off.
  */
 export function nyDateTimeToLocalDate(ymd: string, hhmm: string): Date {
   const [y = 0, mo = 1, d = 1] = ymd.split('-').map((n) => parseInt(n, 10));

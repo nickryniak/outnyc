@@ -1,13 +1,11 @@
 // =============================================================================
 // OutNYC — settings (app/(tabs)/settings.tsx)
 // =============================================================================
-// Default preferences, a clear "where your picks come from" section, the
-// notification permission action, and reset. Copy stays user-friendly: no
-// technical jargon on this screen.
+// Default preferences, a clear "where your picks come from" section, and
+// reset. Copy stays user-friendly: no technical jargon on this screen.
 // =============================================================================
 
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -21,7 +19,6 @@ import {
 } from '../../components/ui';
 import { providerFlags } from '../../lib/config';
 import { confirmDestructive } from '../../lib/confirm';
-import { ensureNotificationPermission } from '../../lib/notifications';
 import { useStore } from '../../lib/store';
 import { colors, radius, spacing } from '../../lib/theme';
 
@@ -96,19 +93,9 @@ export default function SettingsScreen() {
   const loadStatus = useStore((s) => s.loadStatus);
   const profile = useStore((s) => s.profile);
   const resetApp = useStore((s) => s.resetApp);
-  const [notifyMsg, setNotifyMsg] = useState<string | null>(null);
 
   if (loadStatus !== 'ready' || !profile) {
     return <LoadingView label="Loading settings…" />;
-  }
-
-  async function onEnableNotifications() {
-    const granted = await ensureNotificationPermission();
-    setNotifyMsg(
-      granted
-        ? 'Reminders are on. Lock in a plan to get a nudge before each stop.'
-        : 'Reminders are off. Turn them on in your phone settings to get nudges.',
-    );
   }
 
   function onReset() {
@@ -187,21 +174,6 @@ export default function SettingsScreen() {
             </View>
           ))}
         </View>
-      </Card>
-
-      <Card>
-        <Heading>Reminders</Heading>
-        <Caption muted>
-          Get a nudge before each stop when you lock in a plan. Everything stays
-          on your device.
-        </Caption>
-        <Button
-          label="Turn on reminders"
-          variant="secondary"
-          onPress={onEnableNotifications}
-          style={styles.spaced}
-        />
-        {notifyMsg ? <Caption muted>{notifyMsg}</Caption> : null}
       </Card>
 
       <Card>

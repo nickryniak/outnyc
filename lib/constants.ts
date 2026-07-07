@@ -9,6 +9,7 @@
 // 'rooftop'. Keep BUCKET_SEED and SEED_PROFILE in sync with the SQL seed.
 // =============================================================================
 
+import { CATALOG_EVENTS, CATALOG_PLACES } from './catalog';
 import type { BucketItem, Candidate, PriceTier, Profile } from './types';
 
 export const NEIGHBORHOODS = [
@@ -18,12 +19,20 @@ export const NEIGHBORHOODS = [
   'Williamsburg',
   'Chelsea',
   'SoHo',
+  'Nolita',
+  'Chinatown',
+  'Tribeca',
   'Greenpoint',
   'DUMBO',
   'Financial District',
+  'Midtown',
+  'Upper East Side',
+  'Upper West Side',
   'Harlem',
   'Astoria',
+  'Long Island City',
   'Bushwick',
+  'Park Slope',
 ] as const;
 
 export type Neighborhood = (typeof NEIGHBORHOODS)[number];
@@ -76,8 +85,8 @@ export const BUCKET_SEED: BucketItem[] = [
   },
   {
     id: 'seed-bucket-2',
-    title: 'Slice crawl through the East Village',
-    note: 'Hit three classic spots in one night.',
+    title: 'Slice crawl: 2 Bros, Stromboli, then Artichoke',
+    note: 'Three East Village classics in one walkable night — St. Marks Pl to 14th St, one slice each.',
     neighborhood: 'East Village',
     priceTier: 1,
     tags: ['food'],
@@ -96,8 +105,8 @@ export const BUCKET_SEED: BucketItem[] = [
   },
   {
     id: 'seed-bucket-4',
-    title: 'Late-night ramen in the East Village',
-    note: 'For after a show.',
+    title: 'Late-night ramen at Ippudo',
+    note: 'Rich pork-broth bowls on 4th Ave — the kitchen runs late for the after-show crowd.',
     neighborhood: 'East Village',
     priceTier: 2,
     tags: ['food', 'late-night'],
@@ -106,8 +115,8 @@ export const BUCKET_SEED: BucketItem[] = [
   },
   {
     id: 'seed-bucket-5',
-    title: 'Rooftop drinks in Lower Manhattan',
-    note: 'Sunset views over the harbor.',
+    title: 'Rooftop drinks at Overstory',
+    note: 'Sunset over the harbor from the 64th floor — reserve ahead.',
     neighborhood: 'Financial District',
     priceTier: 3,
     tags: ['bar', 'rooftop'],
@@ -136,8 +145,10 @@ export const BUCKET_SEED: BucketItem[] = [
   },
 ];
 
-/** Curated NYC seed events (have fixed start/end times). */
-export const SEED_EVENTS: Candidate[] = [
+/** Curated NYC seed events + activities. The original hand-picked core lives
+ *  here; the generated area catalogs (lib/catalog) are folded in at the bottom
+ *  of this file, taking the pool from ~45 to ~450 venues. */
+const CORE_EVENTS: Candidate[] = [
   {
     id: 'evt-vanguard',
     name: 'Live Jazz at the Village Vanguard',
@@ -244,20 +255,7 @@ export const SEED_EVENTS: Candidate[] = [
     tags: ['live music'],
   },
   // ---- Daytime activities (flexible timing; fill morning/afternoon windows) --
-  {
-    id: 'act-whitney',
-    name: 'Whitney Museum of American Art',
-    kind: 'activity',
-    neighborhood: 'Chelsea',
-    priceTier: 2,
-    durationMin: 120,
-    lat: 40.7396,
-    lng: -74.0089,
-    address: '99 Gansevoort St, New York, NY',
-    bookingUrl: 'https://whitney.org/',
-    description: 'Art museum — modern American art with outdoor terraces over the High Line.',
-    tags: ['art'],
-  },
+  // (The Whitney lives in lib/catalog/downtown.ts as dt-whitney-museum.)
   {
     id: 'act-highline-day',
     name: 'Walk the High Line',
@@ -431,7 +429,7 @@ export const SEED_EVENTS: Candidate[] = [
 ];
 
 /** Curated NYC seed places (restaurants + bars; flexible timing). */
-export const SEED_PLACES: Candidate[] = [
+const CORE_PLACES: Candidate[] = [
   {
     id: 'plc-via-carota',
     name: 'Via Carota',
@@ -862,6 +860,10 @@ export const SEED_PLACES: Candidate[] = [
     tags: ['food', 'coffee'],
   },
 ];
+
+/** The full pools the providers serve: hand-picked core + generated catalog. */
+export const SEED_EVENTS: Candidate[] = [...CORE_EVENTS, ...CATALOG_EVENTS];
+export const SEED_PLACES: Candidate[] = [...CORE_PLACES, ...CATALOG_PLACES];
 
 /** Storage namespace prefix. */
 export const STORAGE_PREFIX = 'outnyc:v1:';

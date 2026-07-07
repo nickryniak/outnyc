@@ -12,7 +12,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@expo-google-fonts/fraunces": "^0.4.1",
+    "@expo-google-fonts/inter": "^0.4.2",
     "@react-native-async-storage/async-storage": "2.1.2",
     "@react-native-community/netinfo": "11.4.1",
     "@react-navigation/bottom-tabs": "^7.3.10",
@@ -22,7 +22,6 @@
     "expo-font": "~13.3.2",
     "expo-linear-gradient": "~14.1.5",
     "expo-linking": "~7.1.5",
-    "expo-notifications": "~0.31.2",
     "expo-router": "~5.1.0",
     "expo-splash-screen": "~0.30.10",
     "expo-status-bar": "~2.2.3",

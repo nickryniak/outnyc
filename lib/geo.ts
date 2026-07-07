@@ -20,12 +20,20 @@ const CENTERS = {
   Williamsburg: { lat: 40.7143, lng: -73.9535 },
   Chelsea: { lat: 40.7465, lng: -74.0014 },
   SoHo: { lat: 40.7233, lng: -74.003 },
+  Nolita: { lat: 40.7223, lng: -73.9953 },
+  Chinatown: { lat: 40.7158, lng: -73.997 },
+  Tribeca: { lat: 40.7163, lng: -74.0086 },
   Greenpoint: { lat: 40.7245, lng: -73.9514 },
   DUMBO: { lat: 40.7033, lng: -73.9881 },
   'Financial District': { lat: 40.7075, lng: -74.0113 },
+  Midtown: { lat: 40.7549, lng: -73.984 },
+  'Upper East Side': { lat: 40.7736, lng: -73.9566 },
+  'Upper West Side': { lat: 40.787, lng: -73.9754 },
   Harlem: { lat: 40.8116, lng: -73.9465 },
   Astoria: { lat: 40.7644, lng: -73.9235 },
+  'Long Island City': { lat: 40.7447, lng: -73.9485 },
   Bushwick: { lat: 40.6944, lng: -73.9213 },
+  'Park Slope': { lat: 40.671, lng: -73.9814 },
 } satisfies Record<Neighborhood, { lat: number; lng: number }>;
 
 /** Approximate centroid of each supported neighborhood. */

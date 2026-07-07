@@ -52,6 +52,8 @@ export const LUNCH = { start: T('11:00'), end: T('14:30') };
 export const DINNER = { start: T('17:30'), end: T('21:30') };
 export const LATE_NIGHT = { start: T('21:00'), end: T('23:59') };
 export const DRINKS = { start: T('16:00'), end: T('23:59') };
+// Latest START for a museum/gallery visit (they generally close 5–6pm).
+export const MUSEUM_HOURS = { start: T('10:00'), end: T('16:30') };
 
 // Meal-anchor targets: the preferred sit-down time + duration the planner
 // reserves when a window covers the meal. Lunch aims mid-slot (noon table),
@@ -120,7 +122,17 @@ export function allowedStart(c: Candidate, startMin: number): boolean {
     return true;
   }
 
-  // Events, activities, walks: any time (fixed-time entries carry their own slot).
+  // Flexible activities: museums and galleries keep daytime hours — a plan
+  // must never send you to a museum at 10pm. Parks, walks, and outdoor art
+  // stay open-ended (a night walk is a real NYC plan).
+  if (c.kind === 'activity' && !c.startTime) {
+    const looksLikeMuseum =
+      /museum|galler/i.test(c.name) ||
+      (tags.includes('art') && !tags.includes('outdoors') && !tags.includes('walk'));
+    if (looksLikeMuseum) return inRange(startMin, MUSEUM_HOURS);
+  }
+
+  // Events, walks: any time (fixed-time entries carry their own slot).
   return true;
 }
 

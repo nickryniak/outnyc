@@ -3,18 +3,17 @@
 // =============================================================================
 // The app IS this screen. A Mon-Sun calendar: paint or drag your free time,
 // plan blocks tile inside the green windows once generated, tap a day (or any
-// block) to expand it in place. Planning is per day: the panel's Plan/Reshuffle
-// buttons and the per-block Swap. The only week-scope action is Clear week.
+// block) to expand it in place. Windows plan themselves automatically; the
+// panel offers the day-scope Reshuffle and per-block Swap. Week-scope actions:
+// "Plan my whole week" (fill + auto-plan empty future days) and Clear week.
 // =============================================================================
 
-import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DayPanel } from '../../components/DayPanel';
-import { Skyline } from '../../components/Skyline';
 import { WeekGrid } from '../../components/WeekGrid';
 import { Button, Caption, LoadingView } from '../../components/ui';
 import { confirmDestructive } from '../../lib/confirm';
@@ -74,6 +73,11 @@ export default function WeekScreen() {
     return <LoadingView label="Loading your week…" />;
   }
 
+  // Only today-or-future days are auto-fillable — planning a past evening is
+  // never useful, and on a fully past week the button disappears entirely.
+  const emptyDates = dates.filter(
+    (d) => d >= today && (availabilityByDate[d]?.windows.length ?? 0) === 0,
+  );
   const anyFree = dates.some((d) => (availabilityByDate[d]?.windows.length ?? 0) > 0);
   const anyPlans = dates.some((d) =>
     Object.values(plansByKey).some((p) => p.date === d && p.items.length > 0),
@@ -83,6 +87,15 @@ export default function WeekScreen() {
   const anyDayPrefs = dates.some(
     (d) => dayPrefsByDate[d] && Object.keys(dayPrefsByDate[d]).length > 1,
   );
+
+  function onPlanWholeWeek() {
+    // One tap plans the entire week: every empty day gets a free evening,
+    // and auto-planning fills each with an itinerary immediately. Days that
+    // already have free time are left exactly as they are.
+    for (const d of emptyDates) {
+      void setAvailability(d, [{ start: '18:00', end: '23:00' }]);
+    }
+  }
 
   function onClearWeek() {
     confirmDestructive(
@@ -98,14 +111,10 @@ export default function WeekScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header with subtle skyline */}
-      <View style={[styles.header, { height: 62 + insets.top }]}>
-        <Skyline variant="evening" height={62 + insets.top} />
-        <LinearGradient
-          colors={['rgba(18,14,10,0.1)', 'rgba(18,14,10,0.55)']}
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={[styles.headerText, { top: insets.top + 4 }]}>
+      {/* Station-sign header: solid black bar under the status area, one
+          caution-yellow rule along its bottom edge. */}
+      <View style={{ paddingTop: insets.top, backgroundColor: colors.bg }}>
+        <View style={styles.signBar}>
           {/* This screen IS home; the wordmark button opens the intro. No Home
               icon or "HOME" text — that promised staying put — and the
               accessible name starts with the visible text so Voice Control's
@@ -117,6 +126,7 @@ export default function WeekScreen() {
             hitSlop={10}
             style={styles.brandRow}
           >
+            <View style={styles.signDot} />
             <Text style={styles.headerEyebrow}>OUTNYC</Text>
           </Pressable>
           <View style={styles.headerRow}>
@@ -156,16 +166,28 @@ export default function WeekScreen() {
       >
         {anyFree ? (
           <Caption muted>
-            Tap an hour to add free time, or drag down a day to paint a range. Tap
-            the neighborhood tag under a day to change where it happens.
+            Tap an hour to add free time — it plans itself instantly. Drag a
+            block to move it and the plan follows. Tap the neighborhood tag
+            under a day to change where it happens.
           </Caption>
         ) : (
           <View style={styles.hintCard}>
-            <Text style={styles.hintLine}>Tap an hour to add free time.</Text>
+            <Text style={styles.hintLine}>Tap an hour to add free time — it plans itself.</Text>
             <Text style={styles.hintLine}>Drag down a day to paint a range.</Text>
-            <Text style={styles.hintLine}>Drag a block&apos;s edges to resize it.</Text>
+            <Text style={styles.hintLine}>Drag a block&apos;s edges to resize; the plan updates.</Text>
           </View>
         )}
+
+        {emptyDates.length > 0 ? (
+          <Button
+            label={
+              emptyDates.length === dates.filter((d) => d >= today).length
+                ? 'Plan my whole week'
+                : `Plan the other ${emptyDates.length === 1 ? 'day' : `${emptyDates.length} days`}`
+            }
+            onPress={onPlanWholeWeek}
+          />
+        ) : null}
 
         <WeekGrid
           dates={dates}
@@ -193,9 +215,21 @@ export default function WeekScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  header: { overflow: 'hidden' },
-  headerText: { position: 'absolute', left: spacing.lg, right: spacing.lg },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start' },
+  signBar: {
+    backgroundColor: colors.sign,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
+    gap: 2,
+    borderBottomWidth: 3,
+    borderBottomColor: colors.gold,
+  },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start' },
+  signDot: {
+    width: 10,
+    height: 10,
+    borderRadius: radius.pill,
+    backgroundColor: colors.gold,
+  },
   headerEyebrow: {
     color: colors.onArtMuted,
     fontSize: font.size.xs,
@@ -214,7 +248,8 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(251,247,236,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
   },

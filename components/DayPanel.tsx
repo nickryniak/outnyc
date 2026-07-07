@@ -11,8 +11,8 @@
 // =============================================================================
 
 import { useRouter } from 'expo-router';
-import { BellRing, ChevronDown, ChevronUp, ExternalLink, RefreshCw, X } from 'lucide-react-native';
-import { memo, useState } from 'react';
+import { CalendarRange, ChevronDown, ChevronUp, ExternalLink, RefreshCw, X } from 'lucide-react-native';
+import { memo, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -21,7 +21,6 @@ import {
   View,
 } from 'react-native';
 
-import { providerFlags } from '../lib/config';
 import { confirmDestructive } from '../lib/confirm';
 import { INTEREST_TAGS, NEIGHBORHOODS, PRICE_TIERS } from '../lib/constants';
 import { priceLabel, ratingText } from '../lib/format';
@@ -69,34 +68,20 @@ const INTENT_LABEL: Record<SwapIntent, string> = {
 };
 
 /**
- * Cuisines only the live Google Places pipeline can ever label: the curated
- * seed catalog contains no venue with these cuisines, so in zero-key mode the
- * chips are structurally impossible to satisfy and are hidden rather than
- * shown as permanently dead buttons with a false "everything was checked"
- * failure message.
+ * Every swap-intent chip, shown on EVERY stop regardless of its current kind.
+ * Groups are MECE — each option belongs to exactly one dimension:
+ *   Price   — relative cost moves (stay within today's stop kind)
+ *   Setting — where it happens (Indoors stays within kind; Outdoors is a
+ *             category override that can swap in a park)
+ *   Cuisine — food/drink venue types (explicit category overrides)
+ *   Vibe    — entertainment/mood types (explicit category overrides)
+ * "Surprise me" is its own standalone chip (random pick, same kind).
+ * Category overrides are store.ts's CROSS_CATEGORY_INTENTS — "Coffee" or
+ * "Outdoors" swaps in a coffee shop or a park no matter what's scheduled here.
  */
-const LIVE_ONLY_CUISINES = new Set<SwapIntent>([
-  'thai',
-  'chinese',
-  'korean',
-  'indian',
-  'mexican',
-  'sushi',
-  'seafood',
-  'steakhouse',
-  'vegan',
-]);
-
-/**
- * Every swap-intent chip, shown on EVERY stop regardless of its current kind,
- * grouped for legibility. "Adjust" stays within today's current stop kind;
- * "Cuisine" and "Vibe" are explicit category overrides (see store.ts's
- * CROSS_CATEGORY_INTENTS) — "Coffee" or "Outdoors" swaps in a coffee shop or
- * a park no matter what's scheduled here today, so a dinner or an activity
- * block can freely become either.
- */
-const ALL_SWAP_INTENT_GROUPS: { label: string; intents: SwapIntent[] }[] = [
-  { label: 'Adjust', intents: ['cheaper', 'pricier', 'surprise', 'indoor'] },
+const SWAP_INTENT_GROUPS: { label: string; intents: SwapIntent[] }[] = [
+  { label: 'Price', intents: ['cheaper', 'pricier'] },
+  { label: 'Setting', intents: ['indoor', 'outdoors'] },
   {
     label: 'Cuisine',
     intents: [
@@ -122,33 +107,23 @@ const ALL_SWAP_INTENT_GROUPS: { label: string; intents: SwapIntent[] }[] = [
       'coffee',
     ],
   },
-  { label: 'Vibe', intents: ['rooftop', 'live-music', 'comedy', 'art', 'outdoors', 'film'] },
+  { label: 'Vibe', intents: ['rooftop', 'live-music', 'comedy', 'art', 'film'] },
 ];
-
-/** The groups actually rendered: live-only cuisines drop out without a key. */
-const SWAP_INTENT_GROUPS: { label: string; intents: SwapIntent[] }[] =
-  providerFlags.places.isLive
-    ? ALL_SWAP_INTENT_GROUPS
-    : ALL_SWAP_INTENT_GROUPS.map((g) => ({
-        ...g,
-        intents: g.intents.filter((i) => !LIVE_ONLY_CUISINES.has(i)),
-      }));
 
 /** Which swap group opens by default, keyed off what's scheduled here now. */
 function defaultSwapGroup(kind: PlanItemKind): string {
   if (kind === 'restaurant') return 'Cuisine';
   if (kind === 'bar' || kind === 'event') return 'Vibe';
-  return 'Adjust';
+  return 'Setting';
 }
 
 /**
- * The one canonical "the week's catalog is used up here" message. Repeats are
- * never served, so an empty window, a failed swap, and an empty alternatives
- * list all mean the same thing — keep them saying the same thing.
+ * The one canonical "nothing fits this slot" message. With the full catalog
+ * plus the week-repeat fallback this should be rare — when it does appear it
+ * means the slot itself is the constraint (hour, length, or neighborhoods).
  */
 const NOTHING_NEW_COPY =
-  "Nothing new fits here this week — you've seen everything that matches. Try a " +
-  "longer window, a wider price range, or different neighborhoods for this day.";
+  'Nothing else fits this slot — try a longer window or different neighborhoods for this day.';
 
 const PRESETS: { label: string; start: string; end: string }[] = [
   { label: 'Morning', start: '09:00', end: '12:00' },
@@ -235,9 +210,9 @@ export function DayPanel({ date, onClose }: { date: string; onClose: () => void 
             style={[styles.reshuffleBtn, busy && { opacity: 0.6 }]}
           >
             {busy ? (
-              <ActivityIndicator size="small" color={colors.onArt} />
+              <ActivityIndicator size="small" color={colors.onAccent} />
             ) : (
-              <RefreshCw size={13} color={colors.onArt} strokeWidth={2.2} />
+              <RefreshCw size={13} color={colors.onAccent} strokeWidth={2.2} />
             )}
             <Text style={styles.reshuffleText}>Reshuffle</Text>
           </Pressable>
@@ -283,10 +258,10 @@ export function DayPanel({ date, onClose }: { date: string; onClose: () => void 
         <Pressable
           accessibilityRole="button"
           onPress={() => router.push({ pathname: '/plan/[date]', params: { date } })}
-          style={styles.remindersLink}
+          style={styles.fullDayLink}
         >
-          <BellRing size={13} color={colors.accent} strokeWidth={2} />
-          <Text style={styles.remindersLinkText}>Reminders and full view</Text>
+          <CalendarRange size={13} color={colors.accent} strokeWidth={2} />
+          <Text style={styles.fullDayLinkText}>Full day view</Text>
         </Pressable>
       ) : null}
 
@@ -467,37 +442,54 @@ const WindowItinerary = memo(function WindowItinerary({
   const planning = useStore((s) => s.planning[key]);
   const generatePlan = useStore((s) => s.generatePlan);
 
+  // Windows normally arrive pre-planned (setting free time IS planning it),
+  // but a window restored from an older build may not have a plan yet —
+  // auto-plan it instead of showing a button.
+  const planStatus = planning?.status ?? 'idle';
+  useEffect(() => {
+    if (!plan && planStatus === 'idle') void generatePlan(date, w);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, plan, planStatus]);
+
   const stops = (plan?.items ?? []).filter((i) => i.kind !== 'walk' && i.kind !== 'break');
 
-  if (planning?.status === 'planning') {
-    return (
-      <View style={styles.windowBox}>
-        <ActivityIndicator color={colors.accent} />
-      </View>
-    );
-  }
-
-  if (!plan) {
+  if (!plan && planStatus === 'error') {
+    // Without this branch a failed generation would spin forever (the ensure
+    // effect only fires while idle). Offer the retry explicitly.
     return (
       <View style={styles.windowBox}>
         <Text style={styles.windowLabel}>
           {format12h(w.start)} to {format12h(w.end)}
         </Text>
+        <Text style={styles.emptyText}>
+          {planning?.error ?? 'Could not build a plan for this window.'}
+        </Text>
         <Pressable
           accessibilityRole="button"
           onPress={() => void generatePlan(date, w)}
-          style={styles.planBtn}
+          style={styles.linkBtn}
         >
-          <Text style={styles.planBtnText}>Plan this window</Text>
+          <Text style={styles.linkBtnText}>Try again</Text>
         </Pressable>
       </View>
     );
   }
 
+  if (!plan || planStatus === 'planning') {
+    return (
+      <View style={styles.windowBox}>
+        <Text style={styles.windowLabel}>
+          {format12h(w.start)} to {format12h(w.end)}
+        </Text>
+        <ActivityIndicator color={colors.accent} />
+      </View>
+    );
+  }
+
   if (stops.length === 0) {
-    // A committed-but-empty plan means the week's catalog is exhausted for
-    // this window (repeats are never served). Re-planning with the same
-    // inputs is a deterministic no-op, so say so instead of offering it.
+    // A committed-but-empty plan means nothing fits this slot even after the
+    // week-repeat fallback — the window itself (hour, length, neighborhoods)
+    // is the constraint, so say so instead of offering a no-op re-plan.
     return (
       <View style={styles.windowBox}>
         <Text style={styles.windowLabel}>
@@ -570,13 +562,12 @@ const StopRow = memo(function StopRow({
             : NOTHING_NEW_COPY,
         );
       } else {
-        // Be honest instead of silently doing nothing. Repeats are never
-        // served, so an empty result means the week's catalog is used up here.
+        // Be honest instead of silently doing nothing.
         setSwapMsg(
           intent && intent !== 'surprise'
             ? CROSS_CATEGORY_INTENTS.has(intent)
-              ? `Nothing ${INTENT_LABEL[intent].toLowerCase()} fits this slot anywhere this week — every venue type was checked.`
-              : `Nothing ${INTENT_LABEL[intent].toLowerCase()} nearby fits this slot this week.`
+              ? `Nothing ${INTENT_LABEL[intent].toLowerCase()} fits this slot in this day's neighborhoods.`
+              : `Nothing ${INTENT_LABEL[intent].toLowerCase()} fits this slot here.`
             : NOTHING_NEW_COPY,
         );
       }
@@ -623,6 +614,15 @@ const StopRow = memo(function StopRow({
 
       {swapMenuOpen ? (
         <View style={styles.swapMenuGroups}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Swap for a surprise pick"
+            disabled={swapping}
+            onPress={() => void onSwap(undefined, 'surprise')}
+            style={[styles.swapChip, styles.surpriseChip, swapping && { opacity: 0.5 }]}
+          >
+            <Text style={styles.swapChipText}>Surprise me</Text>
+          </Pressable>
           {SWAP_INTENT_GROUPS.map((group) => {
             const open = !!openGroups[group.label];
             return (
@@ -665,9 +665,15 @@ const StopRow = memo(function StopRow({
         </View>
       ) : null}
 
-      <Text style={[styles.stopKind, { color: kindColor(item.kind) }]}>
-        {label.toUpperCase()}
-      </Text>
+      {/* MTA-style roundel carries the kind color; the label stays ink. */}
+      <View style={styles.stopKindRow}>
+        <View style={[styles.roundel, { backgroundColor: kindColor(item.kind) }]}>
+          <Text style={styles.roundelText} maxFontSizeMultiplier={1.2}>
+            {label.charAt(0).toUpperCase()}
+          </Text>
+        </View>
+        <Text style={styles.stopKind}>{label.toUpperCase()}</Text>
+      </View>
       <Text style={styles.stopTitle} numberOfLines={2} ellipsizeMode="tail">
         {item.title}
       </Text>
@@ -789,7 +795,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
   },
-  reshuffleText: { color: colors.onArt, fontSize: font.size.sm, fontWeight: font.weight.semibold },
+  reshuffleText: { color: colors.onAccent, fontSize: font.size.sm, fontWeight: font.weight.semibold },
   closeBtn: { padding: spacing.xs },
 
   prefsToggle: {
@@ -853,8 +859,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.freeSoft,
   },
   presetText: { color: colors.free, fontSize: font.size.sm, fontWeight: font.weight.semibold },
-  remindersLink: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 },
-  remindersLinkText: { color: colors.accent, fontSize: font.size.sm, fontWeight: font.weight.medium },
+  fullDayLink: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 },
+  fullDayLinkText: { color: colors.accent, fontSize: font.size.sm, fontWeight: font.weight.medium },
   providerNote: { color: colors.textFaint, fontSize: font.size.xs, fontStyle: 'italic' },
 
   windowBox: { gap: spacing.sm, paddingTop: spacing.xs },
@@ -865,15 +871,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: 'uppercase',
   },
-  planBtn: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
-  },
-  planBtnText: { color: colors.onArt, fontSize: font.size.sm, fontWeight: font.weight.semibold },
-
   stopRow: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.gridLine,
@@ -909,12 +906,26 @@ const styles = StyleSheet.create({
     borderColor: colors.borderStrong,
     backgroundColor: colors.surface,
   },
+  surpriseChip: { alignSelf: 'flex-start' },
   swapChipText: { color: colors.text, fontSize: font.size.xs, fontWeight: font.weight.medium },
+  stopKindRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  roundel: {
+    width: 18,
+    height: 18,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  roundelText: {
+    color: colors.onArt,
+    fontSize: 10,
+    fontWeight: font.weight.bold,
+  },
   stopKind: {
+    color: colors.textMuted,
     fontSize: 10,
     fontWeight: font.weight.bold,
     letterSpacing: 1.2,
-    marginTop: 2,
   },
   stopTitle: {
     color: colors.text,

@@ -44,18 +44,21 @@ describe('nearestNeighborhood', () => {
     expect(nearestNeighborhood(40.7146, -73.9563)).toBe('Williamsburg');
     // The Dead Rabbit (30 Water St).
     expect(nearestNeighborhood(40.7033, -74.0114)).toBe('Financial District');
+    // Mid-Central Park sits inside the Upper West Side footprint.
+    expect(nearestNeighborhood(40.785, -73.968)).toBe('Upper West Side');
   });
 
   it('returns OUTSIDE_AREA_LABEL for venues beyond every neighborhood footprint', () => {
     // JFK Airport — nowhere near any supported neighborhood.
     expect(nearestNeighborhood(40.6413, -73.7781)).toBe(OUTSIDE_AREA_LABEL);
-    // Mid-Central Park: ~3.5km from the closest centroid (Harlem).
-    expect(nearestNeighborhood(40.785, -73.968)).toBe(OUTSIDE_AREA_LABEL);
+    // Coney Island — miles south of the closest centroid (Park Slope).
+    expect(nearestNeighborhood(40.5755, -73.9707)).toBe(OUTSIDE_AREA_LABEL);
   });
 
   it('honors a custom maxKm radius', () => {
-    // Mid-Central Park is outside the default 2km but inside a loosened 5km,
+    // Randall's Island is outside the default 2km but inside a loosened 5km,
     // where Harlem becomes the nearest match.
-    expect(nearestNeighborhood(40.785, -73.968, 5)).toBe('Harlem');
+    expect(nearestNeighborhood(40.793, -73.921)).toBe(OUTSIDE_AREA_LABEL);
+    expect(nearestNeighborhood(40.793, -73.921, 5)).toBe('Harlem');
   });
 });

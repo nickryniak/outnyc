@@ -28,7 +28,7 @@ const KEYS = {
   availability: `${STORAGE_PREFIX}availability`, // map: date -> Availability
   bucketList: `${STORAGE_PREFIX}bucketList`,
   plans: `${STORAGE_PREFIX}plans`, // map: date|start|end -> Plan
-  locked: `${STORAGE_PREFIX}lockedPlanIds`, // array of plan ids with nudges
+  locked: `${STORAGE_PREFIX}lockedPlanIds`, // legacy (reminders removed) — still wiped by clearAll
   feedback: `${STORAGE_PREFIX}feedback`, // array of Feedback
   dayPrefs: `${STORAGE_PREFIX}dayPrefs`, // map: date -> DayPrefs
   seen: `${STORAGE_PREFIX}seenByDate`, // map: date -> candidate ids already used
@@ -164,16 +164,6 @@ export class AsyncStorageRepository implements Repository {
   async getAllPlans(): Promise<Plan[]> {
     const map = await this.plansMap();
     return Object.values(map);
-  }
-
-  async getLockedPlanIds(): Promise<string[]> {
-    return readJSON<string[]>(KEYS.locked, []);
-  }
-
-  async saveLockedPlanIds(ids: string[]): Promise<void> {
-    // Whole-value write, but serialized so it can't interleave with other
-    // writes on the chain (callers read-modify-write this list).
-    await serialized(() => writeJSON(KEYS.locked, ids));
   }
 
   async getAllDayPrefs(): Promise<DayPrefs[]> {
