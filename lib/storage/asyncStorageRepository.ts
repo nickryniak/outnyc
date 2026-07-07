@@ -1,8 +1,8 @@
 // =============================================================================
-// OutNYC — AsyncStorage-backed Repository (lib/storage/asyncStorageRepository.ts)
+// OutNYC: AsyncStorage-backed Repository (lib/storage/asyncStorageRepository.ts)
 // =============================================================================
 // On-device persistence behind the Repository interface. All reads parse
-// defensively (try/catch around JSON.parse) and never throw on corrupt data —
+// defensively (try/catch around JSON.parse) and never throw on corrupt data:
 // they return null/[] and let the caller surface an empty/error state.
 // =============================================================================
 
@@ -28,7 +28,7 @@ const KEYS = {
   availability: `${STORAGE_PREFIX}availability`, // map: date -> Availability
   bucketList: `${STORAGE_PREFIX}bucketList`,
   plans: `${STORAGE_PREFIX}plans`, // map: date|start|end -> Plan
-  locked: `${STORAGE_PREFIX}lockedPlanIds`, // legacy (reminders removed) — still wiped by clearAll
+  locked: `${STORAGE_PREFIX}lockedPlanIds`, // legacy (reminders removed): still wiped by clearAll
   feedback: `${STORAGE_PREFIX}feedback`, // array of Feedback
   dayPrefs: `${STORAGE_PREFIX}dayPrefs`, // map: date -> DayPrefs
   seen: `${STORAGE_PREFIX}seenByDate`, // map: date -> candidate ids already used
@@ -41,7 +41,7 @@ async function readJSON<T>(key: string, fallback: T): Promise<T> {
     if (raw == null) return fallback;
     return JSON.parse(raw) as T;
   } catch (err) {
-    // Corrupt entry — log and fall back rather than crashing a screen.
+    // Corrupt entry: log and fall back rather than crashing a screen.
     console.warn(`[storage] failed to read/parse ${key}:`, err);
     return fallback;
   }
@@ -81,7 +81,7 @@ export class AsyncStorageRepository implements Repository {
 
   private async ensureSchemaVersion(): Promise<void> {
     const stored = await readJSON<number | null>(KEYS.schemaVersion, null);
-    // Missing key means fresh install or pre-versioning data — both are the
+    // Missing key means fresh install or pre-versioning data: both are the
     // version-1 shape, so there is nothing to migrate from.
     const from = stored ?? SCHEMA_VERSION;
     if (from !== SCHEMA_VERSION) {

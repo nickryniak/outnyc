@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — candidate scoring (lib/planner/scoring.ts)
+// OutNYC: candidate scoring (lib/planner/scoring.ts)
 // =============================================================================
 // The per-candidate score behind the heuristic planner's ranking, extracted so
 // other ranking sites (the store's slot-alternatives flow) can use the SAME
@@ -61,7 +61,7 @@ export interface ScoringContext {
   holiday?: { name: string; boostTags: string[] } | null;
   /** Active plan modifier; drives kind weighting and the cheaper price bias. */
   modifier?: PlanModifier;
-  /** Deterministic run seed — hash of `date:modifier:nonce` — mixed into the jitter. */
+  /** Deterministic run seed: hash of `date:modifier:nonce`: mixed into the jitter. */
   seed: number;
   /** Reshuffle counter; nonzero loudens the jitter so reshuffles reorder picks. */
   nonce?: number;

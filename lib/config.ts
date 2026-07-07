@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — runtime config + provider flags (lib/config.ts)
+// OutNYC: runtime config + provider flags (lib/config.ts)
 // =============================================================================
 // Reads EXPO_PUBLIC_* env vars (bundled at build time by Expo) and exposes
 // detected/isLive flags the Settings screen renders. With no keys present,
@@ -51,7 +51,7 @@ export const providerFlags = {
     name: 'Google Places (restaurants)',
     isLive: has(env.googlePlacesKey),
   },
-  // Public NYC Open Data feeds — no key required, so these are always on.
+  // Public NYC Open Data feeds: no key required, so these are always on.
   nycOpenData: {
     name: 'NYC Permitted Events (civic)',
     isLive: true,

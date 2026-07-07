@@ -1,9 +1,9 @@
 // =============================================================================
-// OutNYC — tests for lib/planner/heuristicPlanner.ts
+// OutNYC: tests for lib/planner/heuristicPlanner.ts
 // =============================================================================
 // Drives the planner exactly the way the store's runPlan does: seed profile
 // prefs, the open bucket list, and the curated SEED_EVENTS/SEED_PLACES pools
-// (what the zero-key providers serve). No store import — the request is built
+// (what the zero-key providers serve). No store import: the request is built
 // by hand from the same pieces.
 // =============================================================================
 
@@ -106,7 +106,7 @@ describe('HeuristicPlanner', () => {
     // The inverse of the widening case above: the events pool is empty for a
     // NON-price reason (e.g. the area's only events already retired this
     // week), which price widening can never fix. That must not blow the price
-    // filter fully open for the places pool — a $-budget day may widen at most
+    // filter fully open for the places pool: a $-budget day may widen at most
     // one notch ($$) when its places pool is not itself starved.
     const price = { min: 1 as const, max: 1 as const };
     const plan = await heuristicPlanner.plan(

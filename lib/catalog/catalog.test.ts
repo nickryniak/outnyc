@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — catalog invariants (lib/catalog/catalog.test.ts)
+// OutNYC: catalog invariants (lib/catalog/catalog.test.ts)
 // =============================================================================
 // Guards the generated area catalogs (and the hand-picked core they merge
 // with): unique ids, valid kinds per pool, real neighborhoods, sane times,

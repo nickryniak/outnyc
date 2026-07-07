@@ -1,12 +1,12 @@
 // =============================================================================
-// OutNYC — planDay Supabase Edge Function (Deno)
+// OutNYC: planDay Supabase Edge Function (Deno)
 // =============================================================================
 // FUTURE-SWAP / SECURE PATH. This is the recommended way to enable live LLM
 // planning later: the Anthropic key lives ONLY as a function secret here, never
 // in the app bundle. v1 ships a deterministic on-device heuristic planner and
 // does not call this function at all.
 //
-// Contract (input body) — mirrors the on-device PlanRequest:
+// Contract (input body): mirrors the on-device PlanRequest:
 //   {
 //     date:          string,            // 'YYYY-MM-DD' (America/New_York local)
 //     window:        { start: string; end: string },   // 'HH:MM' 24h local
@@ -143,11 +143,11 @@ Build ONE ordered, walkable itinerary that fits entirely inside the given time w
 - TIME: every stop's startTime/endTime must fall within the window and not overlap. Leave realistic transit/seating gaps. Do not exceed the window's end.
 - PRICE: respect the price range (tiers 1..4 = $..$$$$). Do not exceed the max tier.
 - PRIORITIZE THE BUCKET LIST: if a provided bucket item fits the window, neighborhoods, and price, weave it in and set its bucketItemId. Prefer including at least one when feasible.
-- VARY THE DAY: mix kinds (food, drinks, activity, event) — do not stack three of the same kind in a row unless the user asked for it via the modifier.
+- VARY THE DAY: mix kinds (food, drinks, activity, event): do not stack three of the same kind in a row unless the user asked for it via the modifier.
 - HONOR THE MODIFIER if present (e.g. "more-food", "more-active", "cheaper", "surprise") by biasing selection accordingly.
 - NEVER INVENT VENUES. Use ONLY the candidates provided in events, places, and bucketList. Every "event"/"restaurant"/"bar"/"activity"/"bucket" item MUST reuse a provided candidate's id (as sourceId, and as bucketItemId for bucket items) and its real name/neighborhood/price/coordinates. The only items you may originate are "walk" and "break" connectors (give those a synthetic id like "walk-1").
 
-OUTPUT FORMAT — CRITICAL:
+OUTPUT FORMAT: CRITICAL:
 Return ONLY a JSON array of PlanItem objects. No prose, no explanation, no markdown, no code fences.
 Each PlanItem: { "id": string, "order": number, "kind": "event|restaurant|bar|activity|bucket|walk|break", "title": string, "neighborhood"?: string, "startTime": "HH:MM", "endTime": "HH:MM", "priceTier"?: number, "lat"?: number, "lng"?: number, "address"?: string, "bookingUrl"?: string, "sourceId"?: string, "bucketItemId"?: string, "note"?: string }
 order is 0-based and strictly increasing. Times are 24h "HH:MM" America/New_York local.`;
@@ -366,7 +366,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
     const items = parsePlanItems(text);
     return json({ ok: true, items, generatedBy: "llm" });
   } catch (firstErr) {
-    // Attempt 2 — one stricter retry that hammers on the format contract.
+    // Attempt 2: one stricter retry that hammers on the format contract.
     const stricterSystem =
       SYSTEM_PROMPT +
       `\n\nIMPORTANT: Your previous reply was not parseable. Respond with ONLY a raw JSON array of PlanItem objects. The very first character of your reply MUST be "[" and the last MUST be "]". No prose. No markdown. No code fences. No trailing commentary.`;

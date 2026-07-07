@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — plan item card (components/PlanItemCard.tsx)
+// OutNYC: plan item card (components/PlanItemCard.tsx)
 // =============================================================================
 // One stop in the itinerary, styled like a printed city-guide entry: a serif
 // numeral, the time and kind, a serif title, and Book/Tickets/Directions
@@ -72,11 +72,11 @@ export function PlanItemCard({ item, stopNumber }: { item: PlanItem; stopNumber?
         </View>
 
         {/* Never clamped: this full-view card is the one surface where a long
-            event title (openers, venue, night) must be readable end to end —
+            event title (openers, venue, night) must be readable end to end:
             the grid block and day-panel rows truncate and point here. */}
         <Text style={styles.title}>{item.title}</Text>
 
-        {/* Provenance for bucket stops is the FROM YOUR LIST kind label above —
+        {/* Provenance for bucket stops is the FROM YOUR LIST kind label above:
             no duplicate "from your list" suffix here. */}
         <Text style={styles.sub}>
           {[item.neighborhood, priceLabel(item.priceTier), ratingText(item.rating, item.ratingCount)]
@@ -103,7 +103,7 @@ export function PlanItemCard({ item, stopNumber }: { item: PlanItem; stopNumber?
             <Text style={styles.noSite}>No website listed</Text>
           )}
           {/* mapsUrl always resolves (name+area search fallback), so every stop
-              gets Directions — including user-typed bucket wishes. */}
+              gets Directions: including user-typed bucket wishes. */}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Directions to ${item.title}`}

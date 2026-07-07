@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — settings (app/(tabs)/settings.tsx)
+// OutNYC: settings (app/(tabs)/settings.tsx)
 // =============================================================================
 // Default preferences, a clear "where your picks come from" section, and
 // reset. Copy stays user-friendly: no technical jargon on this screen.
@@ -28,7 +28,7 @@ type SourceStatus = 'On' | 'Ready to turn on' | 'On the roadmap' | 'Not wired up
  * Where picks come from, in plain language. Each status is honest about where
  * things stand: 'Ready to turn on' feeds are built and flip On once their key
  * is set (lib/config.ts), 'On the roadmap' ones aren't built yet, and 'Not
- * wired up yet' means a key alone changes nothing — the hookup isn't finished.
+ * wired up yet' means a key alone changes nothing: the hookup isn't finished.
  */
 const DATA_SOURCES: { name: string; detail: string; status: SourceStatus }[] = [
   {
@@ -48,7 +48,7 @@ const DATA_SOURCES: { name: string; detail: string; status: SourceStatus }[] = [
   },
   {
     name: 'More live events (SeatGeek)',
-    detail: 'A second real ticketed-event feed — indie venues, sports, comedy.',
+    detail: 'A second real ticketed-event feed: indie venues, sports, comedy.',
     status: providerFlags.seatgeek.isLive ? 'On' : 'Ready to turn on',
   },
   {
@@ -69,14 +69,14 @@ const DATA_SOURCES: { name: string; detail: string; status: SourceStatus }[] = [
   {
     name: 'Smarter planning (Gemini)',
     detail: providerFlags.geminiPlanner.isLive
-      ? 'Your key is set, but plans still come from the built-in planner — this hookup is not finished.'
+      ? 'Your key is set, but plans still come from the built-in planner: this hookup is not finished.'
       : 'A smarter AI planner. Even with a key set, plans still come from the built-in planner for now.',
     status: 'Not wired up yet',
   },
   {
     name: 'Private smarter planning (secure server)',
     detail: providerFlags.edgePlanner.isLive
-      ? 'Your server is set up, but plans still come from the built-in planner — this hookup is not finished.'
+      ? 'Your server is set up, but plans still come from the built-in planner: this hookup is not finished.'
       : 'The same smarter planner, run privately off-device. Setting it up does not change your plans yet.',
     status: 'Not wired up yet',
   },
@@ -187,16 +187,6 @@ export default function SettingsScreen() {
         />
       </Card>
 
-      <Card>
-        <Heading>About OutNYC</Heading>
-        <Caption muted>Your day out, planned. Made for New York City.</Caption>
-        <Button
-          label="View intro"
-          variant="ghost"
-          onPress={() => router.push('/welcome')}
-          style={styles.spaced}
-        />
-      </Card>
     </ScrollView>
   );
 }

@@ -1,8 +1,8 @@
 // =============================================================================
-// OutNYC — shared UI primitives (components/ui.tsx)
+// OutNYC: shared UI primitives (components/ui.tsx)
 // =============================================================================
 // Subway wayfinding: Inter grotesk throughout, black-sign primary buttons,
-// hairline rules. No hardcoded hex — all tokens come from lib/theme.
+// hairline rules. No hardcoded hex: all tokens come from lib/theme.
 // =============================================================================
 
 import { ReactNode } from 'react';
@@ -27,7 +27,7 @@ export function Heading({ children, style }: { children: ReactNode; style?: obje
   return <Text style={[styles.heading, style]}>{children}</Text>;
 }
 
-/** Small uppercase kicker above a heading — the editorial "eyebrow". */
+/** Small uppercase kicker above a heading: the editorial "eyebrow". */
 export function Eyebrow({ children, tone }: { children: ReactNode; tone?: 'accent' | 'muted' }) {
   return (
     <Text style={[styles.eyebrow, tone === 'accent' && { color: colors.accent }]}>{children}</Text>
@@ -95,7 +95,7 @@ export function Button({
     >
       {loading ? (
         // A loading button always wears the disabled surfaceAlt fill (the
-        // override wins over the variant), so the spinner must be ink-toned —
+        // override wins over the variant), so the spinner must be ink-toned:
         // a white spinner would vanish on the pale panel.
         <ActivityIndicator color={variant === 'primary' ? colors.textFaint : colors.accent} />
       ) : (

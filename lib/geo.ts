@@ -1,10 +1,10 @@
 // =============================================================================
-// OutNYC — neighborhood geography (lib/geo.ts)
+// OutNYC: neighborhood geography (lib/geo.ts)
 // =============================================================================
 // Maps a live venue's coordinates onto the app's neighborhood list, so venues
 // from external APIs (Ticketmaster etc.) participate in the strict neighborhood
 // filter instead of bypassing it. A venue near none of the listed neighborhoods
-// is labeled OUTSIDE_AREA_LABEL — a real string that matches no selection, so
+// is labeled OUTSIDE_AREA_LABEL: a real string that matches no selection, so
 // the strict filter honestly EXCLUDES it (rather than `undefined`, which reads
 // as location-agnostic and would always pass).
 // =============================================================================

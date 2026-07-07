@@ -1,9 +1,9 @@
 // =============================================================================
-// OutNYC — maps deep links (lib/maps.ts)
+// OutNYC: maps deep links (lib/maps.ts)
 // =============================================================================
 // The single Directions URL builder. ALWAYS returns a usable link: precise
 // coordinates when we have them, then street address, then a plain text search
-// of "title + neighborhood + New York" — so even a user-typed bucket wish with
+// of "title + neighborhood + New York": so even a user-typed bucket wish with
 // no location data still gets a Directions button that opens a sensible search.
 // =============================================================================
 

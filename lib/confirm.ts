@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — cross-platform destructive confirm (lib/confirm.ts)
+// OutNYC: cross-platform destructive confirm (lib/confirm.ts)
 // =============================================================================
 // Alert.alert is a NO-OP in react-native-web, which silently turns any
 // confirm-gated action into a dead button on the web build. This helper uses

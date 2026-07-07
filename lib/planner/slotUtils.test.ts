@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — tests for lib/planner/slotUtils.ts
+// OutNYC: tests for lib/planner/slotUtils.ts
 // =============================================================================
 // Pure shared planner logic: connector rebuilding, venue-identity keys, and
 // the meal-time gating boundaries.
@@ -59,7 +59,7 @@ describe('rebuildConnectors', () => {
       stop('b', 'SoHo', 660 + gap, 720 + gap),
     ]);
 
-  it('leaves a sub-walk-size gap (10 min) alone — no connector rows', () => {
+  it('leaves a sub-walk-size gap (10 min) alone: no connector rows', () => {
     // Below WALK_CONNECTOR_MIN there is nothing to draw; the planner's own
     // compaction passes remove such slack upstream.
     const items = build(10);
@@ -147,7 +147,7 @@ describe('allowedStart meal gating', () => {
   const lateNight = candidate('restaurant', ['food', 'late-night']);
   const bar = candidate('bar', ['bar']);
 
-  it('shares the breakfast/lunch boundary — no dead zone at 11:00', () => {
+  it('shares the breakfast/lunch boundary: no dead zone at 11:00', () => {
     expect(BREAKFAST.end).toBe(LUNCH.start); // the shared-boundary invariant
     expect(allowedStart(restaurant, BREAKFAST.end)).toBe(true);
     expect(allowedStart(restaurant, LUNCH.start)).toBe(true);
@@ -168,9 +168,9 @@ describe('allowedStart meal gating', () => {
   });
 
   it('lets a brunch tag bridge the lunch-to-brunch gap but not past BRUNCH.end', () => {
-    // 14:31 is past LUNCH.end and BRUNCH.end alike — closed even for brunch spots.
+    // 14:31 is past LUNCH.end and BRUNCH.end alike: closed even for brunch spots.
     expect(allowedStart(brunch, LUNCH.end + 1)).toBe(false);
-    // 09:45 sits inside both BRUNCH and BREAKFAST — open either way.
+    // 09:45 sits inside both BRUNCH and BREAKFAST: open either way.
     expect(allowedStart(brunch, toMinutes('09:45'))).toBe(true);
   });
 

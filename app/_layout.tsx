@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — root layout (app/_layout.tsx)
+// OutNYC: root layout (app/_layout.tsx)
 // =============================================================================
 // Root Stack. Loads Inter (the wayfinding grotesk), bootstraps the store once,
 // and themes the navigator (station-white headers, black type).
@@ -29,7 +29,7 @@ import { useStore } from '../lib/store';
 void SplashScreen.preventAutoHideAsync();
 
 /**
- * Root error boundary — expo-router renders this in place of the tree when a
+ * Root error boundary: expo-router renders this in place of the tree when a
  * route crashes during render, instead of leaving a blank screen.
  */
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
@@ -58,7 +58,7 @@ export default function RootLayout() {
     Inter_900Black,
   });
   // useFonts never flips `loaded` when the load FAILS (e.g. a flaky network in
-  // Expo Go) — it sets the error instead. Treat either as "done" so the splash
+  // Expo Go): it sets the error instead. Treat either as "done" so the splash
   // always hides and the app proceeds on system-font fallbacks rather than
   // sitting behind the native splash forever.
   const fontsDone = fontsLoaded || fontError != null;

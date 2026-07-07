@@ -1,14 +1,14 @@
 // =============================================================================
-// OutNYC — events provider (lib/providers/eventsProvider.ts)
+// OutNYC: events provider (lib/providers/eventsProvider.ts)
 // =============================================================================
 // Merges FOUR event sources for a date, never throwing:
 //   - Ticketmaster Discovery v2 (key-gated, EXPO_PUBLIC_TICKETMASTER_API_KEY)
-//   - SeatGeek (key-gated, EXPO_PUBLIC_SEATGEEK_CLIENT_ID) — see seatgeekProvider
-//   - NYC Open Data "Permitted Event Information" (no key) — nycOpenDataProvider
-//   - NYC Parks public events (no key) — nycParksProvider
+//   - SeatGeek (key-gated, EXPO_PUBLIC_SEATGEEK_CLIENT_ID): see seatgeekProvider
+//   - NYC Open Data "Permitted Event Information" (no key): nycOpenDataProvider
+//   - NYC Parks public events (no key): nycParksProvider
 // Venues are snapped onto the app's neighborhood list by coordinates (see
 // lib/geo.ts) so live events obey the strict neighborhood filter. The curated
-// seed ACTIVITIES (museums, parks, walks — no live source supplies these) are
+// seed ACTIVITIES (museums, parks, walks: no live source supplies these) are
 // always kept as a floor; the curated seed EVENTS are the fallback only when
 // no ticketed live source (Ticketmaster/SeatGeek) returns anything usable for
 // the day. Any one source failing never blocks the others.
@@ -35,7 +35,7 @@ export interface ProviderResult {
   error?: string;
   /**
    * Set when the ticketed live sources responded fine but had zero in-area
-   * events, so the curated seed events were substituted — distinguishes
+   * events, so the curated seed events were substituted: distinguishes
    * "live returned nothing nearby" from a live failure (which sets `error`).
    */
   note?: 'live-no-area-matches';
@@ -58,7 +58,7 @@ function tmPriceTier(min: number | undefined): PriceTier | undefined {
   return 4;
 }
 
-// The Discovery v2 fields actually read — compile-time documentation, not
+// The Discovery v2 fields actually read: compile-time documentation, not
 // runtime validation (hence optional everywhere; the mapper stays defensive).
 interface TicketmasterVenue {
   name?: string;
@@ -202,7 +202,7 @@ export const eventsProvider = {
   },
 
   /**
-   * Fetch events for a date from every configured source. Always resolves —
+   * Fetch events for a date from every configured source. Always resolves:
    * never throws.
    */
   async fetchEvents(date: string): Promise<ProviderResult> {
@@ -232,7 +232,7 @@ export const eventsProvider = {
         : undefined;
 
     // The civic/park feeds (no key required) and the curated activities are
-    // pure ADDITIONS on top, never replaced — they're what fills the "Do"
+    // pure ADDITIONS on top, never replaced: they're what fills the "Do"
     // category outside of ticketed shows.
     const candidates = dedupeById([
       ...eventsBucket,

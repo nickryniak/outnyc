@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — deterministic heuristic planner (lib/planner/heuristicPlanner.ts)
+// OutNYC: deterministic heuristic planner (lib/planner/heuristicPlanner.ts)
 // =============================================================================
 // The DEFAULT planner. No network, no key. It:
 //   - filters candidates by price range and (softly) by neighborhood
@@ -64,7 +64,7 @@ const MIN_FILL_MIN = 30;
 const FULL_PRICE_RANGE: PriceRange = { min: 1, max: 4 };
 // Pool-starvation floors: below these the price filter widens one notch, and
 // after that first widening each pool is judged ON ITS OWN, one notch leaner
-// (places < 2 or events < 1 forces full widening) — a healthy events pool must
+// (places < 2 or events < 1 forces full widening): a healthy events pool must
 // never mask an empty places pool, since meal anchors draw only from places.
 const MIN_PLACES_POOL = 3;
 const MIN_EVENTS_POOL = 2;
@@ -72,7 +72,7 @@ const MIN_EVENTS_POOL = 2;
 /**
  * Tighten the day so blocks flow without big empty gaps: stretch each FLEXIBLE
  * stop's end toward the next stop's start. A 15-minute transit buffer is left
- * only when the next stop is in a DIFFERENT (known) neighborhood — a walk
+ * only when the next stop is in a DIFFERENT (known) neighborhood: a walk
  * connector then fills it, so there is no visible hole; same-neighborhood stops
  * run back to back. Fixed-time stops (real events, meal anchors) are never
  * stretched past their true end, and the trailing tail after the last stop is
@@ -93,7 +93,7 @@ export function closeGaps(
     const curEnd = toMinutes(cur.endTime);
     const nextStart = toMinutes(next.startTime);
     // Reserve a transit buffer ONLY when rebuildConnectors will actually insert
-    // a walk — i.e. both neighborhoods are known AND differ. If either side has
+    // a walk: i.e. both neighborhoods are known AND differ. If either side has
     // no neighborhood (e.g. a location-agnostic bucket pick), no walk is drawn,
     // so reserving 15 min there would just leave a dead hole; run back to back.
     const needsWalk =
@@ -109,11 +109,11 @@ export function closeGaps(
  * Compact the packed schedule so idle time between stops never exceeds the
  * transit buffer, wherever venue hours allow it:
  *   pass 1 (pull earlier): every flexible stop's start moves as early as its
- *     meal/venue gating allows, down to prevEnd + buffer — this erases holes
+ *     meal/venue gating allows, down to prevEnd + buffer: this erases holes
  *     the packer's "nudge forward and retry" left behind.
  *   pass 2 (close leading slack): if the first pinned or hours-gated stop still
  *     has a hole before it, the flexible run at the HEAD of the day shifts
- *     later as one piece to sit flush against it — the day simply starts later
+ *     later as one piece to sit flush against it: the day simply starts later
  *     instead of trapping dead time in the middle.
  *   (closeGaps then stretches flexible stops toward the next as a final pass.)
  * Real fixed-time events never move; meal anchors keep their start (meals
@@ -310,7 +310,7 @@ export class HeuristicPlanner implements Planner {
     // A picked neighborhood is respected end to end: every pool drops venues in
     // neighborhoods the user did NOT select (location-agnostic picks, like a
     // bucket wish with no set area, always stay). This is applied at EVERY price
-    // widening below — the planner never widens the neighborhood filter, only
+    // widening below: the planner never widens the neighborhood filter, only
     // price. So no reshuffle or starvation fallback can smuggle in a stop across
     // town.
     const inArea = (c: Candidate) => matchesNeighborhoods(c.neighborhood, req.neighborhoods);
@@ -336,7 +336,7 @@ export class HeuristicPlanner implements Planner {
 
     // Never-repeat is ABSOLUTE: if the fresh pools are starved we widen the
     // PRICE filter (one notch, then fully) but the exclusion list is always
-    // honored — a venue the user has already been given this week never comes
+    // honored: a venue the user has already been given this week never comes
     // back as if it were a fresh pick. When the catalog is genuinely exhausted
     // the day honestly gets fewer stops instead of silently repeating.
     let pools = buildPools(basePrice, true);
@@ -348,7 +348,7 @@ export class HeuristicPlanner implements Planner {
       pools = buildPools(widened, true);
       // Each pool independently: a combined count would let events alone hide
       // an empty places pool, silently starving the meal anchors below. The
-      // full widening is ALSO per pool — only the pool that is itself still
+      // full widening is ALSO per pool: only the pool that is itself still
       // starved takes the full-range rebuild. The events pool is routinely
       // empty for non-price reasons (one neighborhood, its only in-area event
       // already retired this week), and blowing the price filter open for a
@@ -412,7 +412,7 @@ export class HeuristicPlanner implements Planner {
     const restaurants = rankedPlaces.map((s) => s.candidate).filter((c) => c.kind === 'restaurant');
     // When the request has other (timeless, non-meal) picks to place, a meal
     // anchor must not monopolize a window too small for the meal plus one
-    // minimal extra stop — the short window goes to the activity instead
+    // minimal extra stop: the short window goes to the activity instead
     // (a restaurant can still land organically via the flexible fill).
     const wantsOtherActivity = preference.some((c) => !hasTimes(c) && c.kind !== 'restaurant');
     const anchorUsed = new Set<string>();
@@ -445,7 +445,7 @@ export class HeuristicPlanner implements Planner {
     });
     // A flexible candidate for the SAME real place as an already-committed
     // fixed event (a bucket wish for "the Village Vanguard" alongside a real
-    // Vanguard show) must never enter the flexible pool at all — otherwise it
+    // Vanguard show) must never enter the flexible pool at all: otherwise it
     // could get placed by a fill pass that runs BEFORE the fixed event itself
     // is pushed, which a same-pass venue check can't catch after the fact.
     const fixedVenueKeys = new Set(fixed.map((f) => venueKey(f.name)));
@@ -558,11 +558,11 @@ export class HeuristicPlanner implements Planner {
       fillUntil(evS, true);
       if (evS < cursor) continue; // a filler overran; skip rather than overlap
       // A "soft" (drop-in, non-ticketed) event isolated by a big dead stretch
-      // AFTER the day has already started — with nothing available to bridge
-      // it — is worse than just not including it. A real ticket is always
+      // AFTER the day has already started: with nothing available to bridge
+      // it: is worse than just not including it. A real ticket is always
       // kept regardless of the gap it needs. Measure the gap from the END OF
       // THE LAST REAL STOP anywhere in the plan so far (not the exploratory
-      // "nudge forward" cursor, which advances even when nothing more fits —
+      // "nudge forward" cursor, which advances even when nothing more fits:
       // and NOT gated on whether THIS fillUntil call specifically placed
       // something, since one early filler stop followed by a long unfillable
       // stretch must still count as isolated).
@@ -588,7 +588,7 @@ export class HeuristicPlanner implements Planner {
     }
     fillUntil(winEnd, false);
 
-    // If nothing fit (e.g. tiny window), leave items empty — the UI shows an
+    // If nothing fit (e.g. tiny window), leave items empty: the UI shows an
     // empty state explaining why.
     void totalMin;
 

@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — canonical domain model (lib/types.ts)
+// OutNYC: canonical domain model (lib/types.ts)
 // =============================================================================
 // This is the SINGLE SOURCE OF TRUTH for the on-device domain shapes. It is
 // kept in sync with:
@@ -175,7 +175,7 @@ export interface Candidate {
   cuisine?: string;
   /**
    * True for recurring, drop-in civic/park programs (not ticketed one-off
-   * events) — the planner may skip one of these rather than force an
+   * events): the planner may skip one of these rather than force an
    * unfillable gap around it, since missing a free class is low-stakes
    * compared to dropping a real paid ticket.
    */

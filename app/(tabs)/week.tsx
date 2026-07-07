@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — weekly calendar home (app/(tabs)/week.tsx)
+// OutNYC: weekly calendar home (app/(tabs)/week.tsx)
 // =============================================================================
 // The app IS this screen. A Mon-Sun calendar: paint or drag your free time,
 // plan blocks tile inside the green windows once generated, tap a day (or any
@@ -42,7 +42,7 @@ export default function WeekScreen() {
   const dates = useMemo(() => weekDates(monday), [monday]);
 
   // 'today' is captured in state, so refresh it whenever the app foregrounds or
-  // this screen regains focus — otherwise the today-highlight (and the week the
+  // this screen regains focus: otherwise the today-highlight (and the week the
   // grid anchors to) go stale after midnight.
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
@@ -73,7 +73,7 @@ export default function WeekScreen() {
     return <LoadingView label="Loading your week…" />;
   }
 
-  // Only today-or-future days are auto-fillable — planning a past evening is
+  // Only today-or-future days are auto-fillable: planning a past evening is
   // never useful, and on a fully past week the button disappears entirely.
   const emptyDates = dates.filter(
     (d) => d >= today && (availabilityByDate[d]?.windows.length ?? 0) === 0,
@@ -116,7 +116,7 @@ export default function WeekScreen() {
       <View style={{ paddingTop: insets.top, backgroundColor: colors.bg }}>
         <View style={styles.signBar}>
           {/* This screen IS home; the wordmark button opens the intro. No Home
-              icon or "HOME" text — that promised staying put — and the
+              icon or "HOME" text: that promised staying put: and the
               accessible name starts with the visible text so Voice Control's
               "Tap OutNYC" resolves (WCAG 2.5.3 label-in-name). */}
           <Pressable
@@ -166,13 +166,13 @@ export default function WeekScreen() {
       >
         {anyFree ? (
           <Caption muted>
-            Tap an hour to add free time — it plans itself instantly. Drag a
+            Tap an hour to add free time: it plans itself instantly. Drag a
             block to move it and the plan follows. Tap the neighborhood tag
             under a day to change where it happens.
           </Caption>
         ) : (
           <View style={styles.hintCard}>
-            <Text style={styles.hintLine}>Tap an hour to add free time — it plans itself.</Text>
+            <Text style={styles.hintLine}>Tap an hour to add free time: it plans itself.</Text>
             <Text style={styles.hintLine}>Drag down a day to paint a range.</Text>
             <Text style={styles.hintLine}>Drag a block&apos;s edges to resize; the plan updates.</Text>
           </View>

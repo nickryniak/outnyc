@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — America/New_York time helpers (lib/time.ts)
+// OutNYC: America/New_York time helpers (lib/time.ts)
 // =============================================================================
 // All "today"/date/window logic treats time as America/New_York local. Dates
 // are 'YYYY-MM-DD' strings; window times are 'HH:MM' 24h strings. We derive NY
@@ -156,7 +156,7 @@ export function normalizeTime(input: string): string | null {
   const trimmed = input.trim();
   if (trimmed === '') return null;
   // Only digits and a single colon are meaningful; a stray '-' or '.' etc. is a
-  // typo, not a time — reject rather than silently stripping it (e.g. '-5').
+  // typo, not a time: reject rather than silently stripping it (e.g. '-5').
   if (/[^0-9:]/.test(trimmed)) return null;
   if ((trimmed.match(/:/g) ?? []).length > 1) return null;
   let h: number;
@@ -252,7 +252,7 @@ export function format12h(hhmm: string): string {
 }
 
 /**
- * Build a JS Date for a NY-local (date, 'HH:MM') wall-clock instant — the TRUE
+ * Build a JS Date for a NY-local (date, 'HH:MM') wall-clock instant: the TRUE
  * America/New_York moment, regardless of the device's own timezone. Used to
  * build UTC instants for live-event provider queries. On a device already set
  * to NY this yields exactly the same instant (DST included); on a UTC

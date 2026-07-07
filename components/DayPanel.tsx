@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — expanded day panel (components/DayPanel.tsx)
+// OutNYC: expanded day panel (components/DayPanel.tsx)
 // =============================================================================
 // Renders in place below the calendar when a day is selected. Shows:
 //   - the day header with holiday context and the single day-scope Reshuffle
@@ -69,14 +69,14 @@ const INTENT_LABEL: Record<SwapIntent, string> = {
 
 /**
  * Every swap-intent chip, shown on EVERY stop regardless of its current kind.
- * Groups are MECE — each option belongs to exactly one dimension:
- *   Price   — relative cost moves (stay within today's stop kind)
- *   Setting — where it happens (Indoors stays within kind; Outdoors is a
+ * Groups are MECE: each option belongs to exactly one dimension:
+ *   Price  : relative cost moves (stay within today's stop kind)
+ *   Setting: where it happens (Indoors stays within kind; Outdoors is a
  *             category override that can swap in a park)
- *   Cuisine — food/drink venue types (explicit category overrides)
- *   Vibe    — entertainment/mood types (explicit category overrides)
+ *   Cuisine: food/drink venue types (explicit category overrides)
+ *   Vibe   : entertainment/mood types (explicit category overrides)
  * "Surprise me" is its own standalone chip (random pick, same kind).
- * Category overrides are store.ts's CROSS_CATEGORY_INTENTS — "Coffee" or
+ * Category overrides are store.ts's CROSS_CATEGORY_INTENTS: "Coffee" or
  * "Outdoors" swaps in a coffee shop or a park no matter what's scheduled here.
  */
 const SWAP_INTENT_GROUPS: { label: string; intents: SwapIntent[] }[] = [
@@ -119,11 +119,11 @@ function defaultSwapGroup(kind: PlanItemKind): string {
 
 /**
  * The one canonical "nothing fits this slot" message. With the full catalog
- * plus the week-repeat fallback this should be rare — when it does appear it
+ * plus the week-repeat fallback this should be rare: when it does appear it
  * means the slot itself is the constraint (hour, length, or neighborhoods).
  */
 const NOTHING_NEW_COPY =
-  'Nothing else fits this slot — try a longer window or different neighborhoods for this day.';
+  'Nothing else fits this slot: try a longer window or different neighborhoods for this day.';
 
 const PRESETS: { label: string; start: string; end: string }[] = [
   { label: 'Morning', start: '09:00', end: '12:00' },
@@ -136,7 +136,7 @@ export function DayPanel({ date, onClose }: { date: string; onClose: () => void 
   const router = useRouter();
   const profile = useStore((s) => s.profile);
   // Select the availability RECORD (a stable reference), then derive the array
-  // in render — returning `?? []` straight from the selector makes a new array
+  // in render: returning `?? []` straight from the selector makes a new array
   // every call and sends zustand's snapshot check into an infinite loop.
   const availability = useStore((s) => s.availabilityByDate[date]);
   const windows = availability?.windows ?? [];
@@ -151,7 +151,7 @@ export function DayPanel({ date, onClose }: { date: string; onClose: () => void 
   const [prefsOpen, setPrefsOpen] = useState(false);
 
   if (!profile) {
-    // Still hydrating — hold the panel's place instead of blinking it away.
+    // Still hydrating: hold the panel's place instead of blinking it away.
     return (
       <View style={styles.panel}>
         <View style={styles.skeletonLine} />
@@ -265,7 +265,7 @@ export function DayPanel({ date, onClose }: { date: string; onClose: () => void 
         </Pressable>
       ) : null}
 
-      {/* Live event feeds answered but had nothing in this day's areas —
+      {/* Live event feeds answered but had nothing in this day's areas:
           honest provenance for the curated picks that filled in (distinct
           from a live failure, which the provider reports as an error). */}
       {windows.length > 0 && eventsNote === 'live-no-area-matches' ? (
@@ -443,7 +443,7 @@ const WindowItinerary = memo(function WindowItinerary({
   const generatePlan = useStore((s) => s.generatePlan);
 
   // Windows normally arrive pre-planned (setting free time IS planning it),
-  // but a window restored from an older build may not have a plan yet —
+  // but a window restored from an older build may not have a plan yet:
   // auto-plan it instead of showing a button.
   const planStatus = planning?.status ?? 'idle';
   useEffect(() => {
@@ -488,7 +488,7 @@ const WindowItinerary = memo(function WindowItinerary({
 
   if (stops.length === 0) {
     // A committed-but-empty plan means nothing fits this slot even after the
-    // week-repeat fallback — the window itself (hour, length, neighborhoods)
+    // week-repeat fallback: the window itself (hour, length, neighborhoods)
     // is the constraint, so say so instead of offering a no-op re-plan.
     return (
       <View style={styles.windowBox}>
@@ -531,7 +531,7 @@ const StopRow = memo(function StopRow({
   const [swapping, setSwapping] = useState(false);
   const [swapMsg, setSwapMsg] = useState<string | null>(null);
   const [swapMenuOpen, setSwapMenuOpen] = useState(false);
-  // Only the group most relevant to this stop starts expanded — 21 flat chips
+  // Only the group most relevant to this stop starts expanded: 21 flat chips
   // is a wall; the rest stay one tap away behind their headers.
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => ({
     [defaultSwapGroup(item.kind)]: true,
@@ -553,12 +553,12 @@ const StopRow = memo(function StopRow({
         setAlts(null);
       } else if (replacementId) {
         // The tapped option was consumed elsewhere this week (or fell out of
-        // the fresh ranking) — refresh the list instead of blaming the prefs.
+        // the fresh ranking): refresh the list instead of blaming the prefs.
         const list = await alternativesForItem(date, w, item.id);
         setAlts(list);
         setSwapMsg(
           list.length > 0
-            ? 'That option was just used elsewhere this week — pick from the refreshed list.'
+            ? 'That option was just used elsewhere this week: pick from the refreshed list.'
             : NOTHING_NEW_COPY,
         );
       } else {
@@ -702,7 +702,7 @@ const StopRow = memo(function StopRow({
           <Text style={styles.noSite}>No website listed</Text>
         )}
         {/* mapsUrl always resolves (falls back to a name+area search), so every
-            stop gets Directions — including user-typed bucket wishes. */}
+            stop gets Directions: including user-typed bucket wishes. */}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Directions to ${item.title}`}

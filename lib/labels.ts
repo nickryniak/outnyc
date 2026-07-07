@@ -1,7 +1,7 @@
 // =============================================================================
-// OutNYC — human stop labels (lib/labels.ts)
+// OutNYC: human stop labels (lib/labels.ts)
 // =============================================================================
-// One shared answer to "what IS this stop?" — shown on the calendar block, the
+// One shared answer to "what IS this stop?": shown on the calendar block, the
 // day panel, and the full plan view, so a user who has never heard of Buvette
 // still reads "LUNCH · Buvette". Meal labels come from the stop's START time
 // (the same meal windows the planner schedules with, via mealSlotAt); event and
@@ -24,7 +24,7 @@ export function stopLabel(kind: PlanItemKind, startTime: string, tags?: string[]
     case 'restaurant': {
       const slot = mealSlotAt(toMinutes(startTime));
       // Coffee shops stay "Coffee" across their whole schedulable range
-      // (07:00-17:00 = coffee/breakfast/lunch slots) — a 12:30 espresso stop
+      // (07:00-17:00 = coffee/breakfast/lunch slots): a 12:30 espresso stop
       // is not "Lunch".
       if (t.includes('coffee') && (slot === 'coffee' || slot === 'breakfast' || slot === 'lunch')) {
         return 'Coffee';

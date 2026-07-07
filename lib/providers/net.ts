@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — provider fetch helpers (lib/providers/net.ts)
+// OutNYC: provider fetch helpers (lib/providers/net.ts)
 // =============================================================================
 // One bounded-fetch helper for the live providers: aborts after `timeoutMs` so
 // a hung API can never stall planning (providers catch and fall back to seed).
@@ -14,7 +14,7 @@ const ONLINE_PROBE_TIMEOUT_MS = 1500;
 
 /**
  * Best-effort connectivity check. FAIL OPEN: resolves true when the probe
- * itself times out, errors, or reports "unknown" — the probe must never be
+ * itself times out, errors, or reports "unknown": the probe must never be
  * the reason a fetch is blocked.
  */
 export async function isOnline(): Promise<boolean> {
@@ -24,7 +24,7 @@ export async function isOnline(): Promise<boolean> {
       timer = setTimeout(() => resolve(null), ONLINE_PROBE_TIMEOUT_MS);
     });
     const state = await Promise.race([NetInfo.fetch(), timeout]);
-    // isConnected is null when unknown — only a definite false means offline.
+    // isConnected is null when unknown: only a definite false means offline.
     return state == null ? true : state.isConnected !== false;
   } catch {
     return true;

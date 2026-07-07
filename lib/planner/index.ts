@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — planner barrel (lib/planner/index.ts)
+// OutNYC: planner barrel (lib/planner/index.ts)
 // =============================================================================
 // The heuristic planner is the DEFAULT. Future Gemini/edge adapters would
 // implement the same Planner interface and be selected here.

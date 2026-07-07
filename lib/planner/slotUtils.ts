@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — shared slot utilities (lib/planner/slotUtils.ts)
+// OutNYC: shared slot utilities (lib/planner/slotUtils.ts)
 // =============================================================================
 // Logic shared by the heuristic planner and the swap/alternatives flow:
 //   - deterministic hashing for stable tie-breaks
@@ -40,7 +40,7 @@ export function candidateDuration(c: Candidate): number {
 // ---- Meal-time gating --------------------------------------------------------
 
 /** Minutes since midnight for the day's dining rhythms. Exported as the ONE
- * source of truth for meal-time boundaries — the planner's meal-anchor gates
+ * source of truth for meal-time boundaries: the planner's meal-anchor gates
  * derive from these, never from their own inline clock times. */
 const T = (hhmm: string) => toMinutes(hhmm);
 export const COFFEE = { start: T('07:00'), end: T('17:00') };
@@ -122,7 +122,7 @@ export function allowedStart(c: Candidate, startMin: number): boolean {
     return true;
   }
 
-  // Flexible activities: museums and galleries keep daytime hours — a plan
+  // Flexible activities: museums and galleries keep daytime hours: a plan
   // must never send you to a museum at 10pm. Parks, walks, and outdoor art
   // stay open-ended (a night walk is a real NYC plan).
   if (c.kind === 'activity' && !c.startTime) {
@@ -152,12 +152,12 @@ export function neighborhoodTokens(neighborhood: string): string[] {
  * True if a candidate's neighborhood satisfies the day's selected set. Rules,
  * in order:
  *   - An empty selection matches everything (no filter is set for the day).
- *   - A candidate with NO neighborhood is location-agnostic — e.g. one of the
- *     user's own bucket wishes with no set area, or a citywide pick — and always
+ *   - A candidate with NO neighborhood is location-agnostic: e.g. one of the
+ *     user's own bucket wishes with no set area, or a citywide pick: and always
  *     qualifies (it can happen anywhere, including the selected neighborhoods).
  *   - Otherwise at least one of the candidate's neighborhood tokens must be one
  *     of the selected ones (case-insensitive). A venue in a neighborhood the
- *     user did NOT pick is ALWAYS excluded — there is no widening that re-admits
+ *     user did NOT pick is ALWAYS excluded: there is no widening that re-admits
  *     it, so a picked neighborhood is respected end to end.
  */
 export function matchesNeighborhoods(
@@ -175,7 +175,7 @@ export function matchesNeighborhoods(
  * STRICT filter to the selected neighborhoods. Drops every candidate whose
  * neighborhood is set and not selected; keeps in-neighborhood and
  * location-agnostic (no-neighborhood) picks. There is deliberately NO
- * "fall back to everything if empty" escape hatch — an empty result is honest
+ * "fall back to everything if empty" escape hatch: an empty result is honest
  * ("nothing here fits your neighborhoods") and is far better than silently
  * showing a venue across town, which was the old bug.
  */
@@ -191,7 +191,7 @@ export function filterToNeighborhoods<T extends { neighborhood?: string }>(
  * wish ("Jazz set at the Village Vanguard") and a curated/live listing for the
  * SAME real place ("Live Jazz at the Village Vanguard") are recognized as one
  * venue rather than two different "fresh" picks. Common English phrasing is
- * "<activity> at [the] <venue>" — when present, the venue after "at" IS the
+ * "<activity> at [the] <venue>": when present, the venue after "at" IS the
  * identity; otherwise the whole (already venue-only) name is used as-is.
  */
 export function venueKey(name: string): string {

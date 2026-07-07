@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — bucket list (app/(tabs)/bucket.tsx)
+// OutNYC: bucket list (app/(tabs)/bucket.tsx)
 // =============================================================================
 // Aspirational items the planner weaves into your week. Paste a whole list
 // (numbered or one-per-line) to bulk-import; each OPEN item becomes a candidate.
@@ -50,7 +50,7 @@ export default function BucketScreen() {
   // Bucket item id -> earliest UPCOMING date it's scheduled on. Bucket-derived
   // stops carry the item's id as `bucketItemId` (planner + swaps), so that's
   // the link. Plans for past dates can survive in storage, so anything before
-  // today is ignored — a stale last-week placement must neither show as "on
+  // today is ignored: a stale last-week placement must neither show as "on
   // calendar" nor mask a genuinely upcoming one.
   const scheduledDateById = useMemo(() => {
     const today = todayNY();

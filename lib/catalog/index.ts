@@ -1,10 +1,10 @@
 // =============================================================================
-// OutNYC — curated venue catalog (lib/catalog/index.ts)
+// OutNYC: curated venue catalog (lib/catalog/index.ts)
 // =============================================================================
 // The full curated NYC catalog: ~450 real venues and activities across all 20
 // supported neighborhoods (plus floating citywide activities), generated per
 // area and merged here. constants.ts folds these into SEED_PLACES /
-// SEED_EVENTS so the whole app — planner, swaps, alternatives — draws from
+// SEED_EVENTS so the whole app: planner, swaps, alternatives: draws from
 // the same pool. Ids are prefixed per file (dt-/up-/bk-/qc-) so they can
 // never collide with each other or with the original plc-/evt-/act- seeds.
 // =============================================================================
@@ -29,7 +29,7 @@ const GAP_FILL_PLACES: Candidate[] = [
     lng: -74.0003,
     address: '60 Greenwich Ave, New York, NY',
     cuisine: 'Indian',
-    description: 'South Indian restaurant — Michelin-starred unapologetic home cooking; book way ahead.',
+    description: 'South Indian restaurant: Michelin-starred unapologetic home cooking; book way ahead.',
     tags: ['food'],
   },
   {
@@ -43,7 +43,7 @@ const GAP_FILL_PLACES: Candidate[] = [
     lng: -73.9884,
     address: '119 Delancey St, New York, NY',
     cuisine: 'Indian',
-    description: 'Indian restaurant — fiery regional dishes rarely seen on US menus, in Essex Market.',
+    description: 'Indian restaurant: fiery regional dishes rarely seen on US menus, in Essex Market.',
     tags: ['food'],
   },
   {
@@ -57,7 +57,7 @@ const GAP_FILL_PLACES: Candidate[] = [
     lng: -73.9829,
     address: '365 5th Ave, Brooklyn, NY',
     cuisine: 'Indian',
-    description: 'Bengali restaurant — homestyle Kolkata cooking from the Dhamaka team, on 5th Ave.',
+    description: 'Bengali restaurant: homestyle Kolkata cooking from the Dhamaka team, on 5th Ave.',
     tags: ['food'],
   },
 ];

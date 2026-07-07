@@ -1,8 +1,8 @@
 // =============================================================================
-// OutNYC — welcome (app/welcome.tsx)
+// OutNYC: welcome (app/welcome.tsx)
 // =============================================================================
 // A full-bleed station sign: black field, six subway-bullet roundels spelling
-// the wordmark, one caution-yellow rule. Pure welcome — no onboarding fields —
+// the wordmark, one caution-yellow rule. Pure welcome: no onboarding fields:
 // leading into the app.
 // =============================================================================
 
@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../lib/store';
 import { colors, font, radius, spacing } from '../lib/theme';
 
-/** The wordmark as subway line bullets — one letter per MTA line color. */
+/** The wordmark as subway line bullets: one letter per MTA line color. */
 const ROUNDELS: { letter: string; bg: string; ink: string }[] = [
   { letter: 'O', bg: colors.restaurant, ink: colors.onArt },
   { letter: 'U', bg: colors.bar, ink: colors.onArt },
@@ -63,15 +63,12 @@ export default function Welcome() {
             Mark when you are free and get a walkable plan for every day of your
             week: events, restaurants, and your own bucket list, in order.
           </Text>
-          {/* Revisited from inside the app, the CTA pops back to WHEREVER
-              pushed it (week header or Settings' "View intro"), so the label
-              must not promise a specific destination. */}
           <Pressable
             accessibilityRole="button"
             onPress={enter}
             style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]}
           >
-            <Text style={styles.ctaText}>{router.canGoBack() ? 'Done' : 'Start planning'}</Text>
+            <Text style={styles.ctaText}>PLAN YOUR WEEK!</Text>
           </Pressable>
         </View>
       </View>
@@ -127,8 +124,8 @@ const styles = StyleSheet.create({
   },
   ctaText: {
     color: colors.sign,
+    fontFamily: font.family.display,
     fontSize: font.size.md,
-    fontWeight: font.weight.semibold,
-    letterSpacing: 0.2,
+    letterSpacing: 1,
   },
 });

@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — NYC holiday / notable-date layer (lib/holidays.ts)
+// OutNYC: NYC holiday / notable-date layer (lib/holidays.ts)
 // =============================================================================
 // A small static list of NYC-relevant dates. The calendar tints the matching
 // day header (subtle accent + icon), and the planner receives the holiday as

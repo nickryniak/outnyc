@@ -1,11 +1,11 @@
 // =============================================================================
-// OutNYC — design tokens (lib/theme.ts)
+// OutNYC: design tokens (lib/theme.ts)
 // =============================================================================
-// "Subway wayfinding" — modern-art simplicity with an industrial city edge:
+// "Subway wayfinding": modern-art simplicity with an industrial city edge:
 // station-white canvas, black sign bars, MTA line-color roundels for stop
 // kinds, one caution-yellow detail, and a Helvetica-grade grotesk (Inter,
 // loaded in app/_layout.tsx) everywhere. Geometry is sharp: bars and perfect
-// circles, hairline rules, minimal radius. No hardcoded hex in screens —
+// circles, hairline rules, minimal radius. No hardcoded hex in screens:
 // import { colors, font, ... } and use these tokens.
 // =============================================================================
 
@@ -23,11 +23,11 @@ export const colors = {
   textFaint: '#6E6E6A', // lightest ink that still passes WCAG AA on white
 
   // Wayfinding accents.
-  accent: '#0039A6', // MTA blue — interactive: links, selected chips
+  accent: '#0039A6', // MTA blue: interactive: links, selected chips
   accentSoft: '#E7EDF8', // pale blue wash behind selected chips
   secondary: '#00933C', // MTA green
   secondarySoft: '#E2F3E8',
-  gold: '#FCCC0A', // caution / N-Q-R yellow — the one decorative color
+  gold: '#FCCC0A', // caution / N-Q-R yellow: the one decorative color
   goldSoft: '#FFF6D2',
 
   // Semantic.
@@ -85,7 +85,7 @@ export const radius = {
 } as const;
 
 export const font = {
-  // Inter — the Helvetica of screens (loaded in app/_layout.tsx). The token
+  // Inter: the Helvetica of screens (loaded in app/_layout.tsx). The token
   // KEYS keep their old names so no component changes: "serif" now simply
   // means body-regular, "display" means the heaviest signage weight.
   family: {

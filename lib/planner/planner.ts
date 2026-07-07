@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — Planner interface (lib/planner/planner.ts)
+// OutNYC: Planner interface (lib/planner/planner.ts)
 // =============================================================================
 // The planning contract. The deterministic heuristic is the DEFAULT impl.
 // Gemini/edge-function adapters can implement this later without screen changes.

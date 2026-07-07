@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — zustand store (lib/store.ts)
+// OutNYC: zustand store (lib/store.ts)
 // =============================================================================
 // The single app store. Wires the Repository, default Planner, and providers
 // together. Screens read state + call actions; they never touch the repository
@@ -14,7 +14,7 @@
 //   - Never-repeat: every candidate a day has been shown lands in seenByDate;
 //     planning, reshuffles, and swaps exclude everything seen ANYWHERE in the
 //     same Mon-Sun week. If that leaves a window with NOTHING, the exclusion
-//     falls back to this date only (same-day repeats stay impossible) — a
+//     falls back to this date only (same-day repeats stay impossible): a
 //     venue from earlier in the week beats a dead window.
 //   - Reshuffle verbs: day (reshuffleDay) and single block (swapPlanItem /
 //     alternativesForItem, with optional intent).
@@ -22,7 +22,7 @@
 
 import { create } from 'zustand';
 
-import { parseBucketText } from './bucketParse';
+import { isListHeader, parseBucketText } from './bucketParse';
 import { BUCKET_SEED, NEIGHBORHOODS, SEED_PROFILE } from './constants';
 import { holidayFor } from './holidays';
 import { defaultPlanner } from './planner';
@@ -64,13 +64,13 @@ export interface PlanningState {
 
 /**
  * How a per-stop swap should choose its replacement:
- *   cheaper/pricier   — best-ranked candidate below/above this stop's price,
+ *   cheaper/pricier  : best-ranked candidate below/above this stop's price,
  *                       within the SAME category as today (a dinner stays a
  *                       dinner, just pricier)
- *   surprise          — uniformly random among everything that fits the slot,
+ *   surprise         : uniformly random among everything that fits the slot,
  *                       same category as today
- *   indoor            — excludes candidates tagged 'outdoors', same category
- *   everything else   — an explicit CATEGORY override: "I just want a coffee
+ *   indoor           : excludes candidates tagged 'outdoors', same category
+ *   everything else  : an explicit CATEGORY override: "I just want a coffee
  *                       shop" / "a park" should work no matter what's
  *                       currently scheduled here, so these search the WHOLE
  *                       slot (any kind), not just this stop's category. See
@@ -148,7 +148,7 @@ function isTagIntent(intent: SwapIntent): intent is TagIntent {
 
 /**
  * Intents that name an explicit category (a cuisine or a tag) rather than a
- * relative adjustment. These search every kind of candidate for the slot —
+ * relative adjustment. These search every kind of candidate for the slot:
  * "Coffee" or "Outdoors" should surface a coffee shop / a park even when the
  * stop you're swapping is currently a dinner or a show.
  */
@@ -183,7 +183,7 @@ interface StoreState {
   /**
    * Per-date note from the events provider's last fetch for that date:
    * 'live-no-area-matches' means the ticketed live sources answered fine but
-   * had zero in-area events, so curated seed events were substituted — the UI
+   * had zero in-area events, so curated seed events were substituted: the UI
    * shows this so "nothing nearby" is distinguishable from "live broken".
    */
   eventsNoteByDate: Record<string, 'live-no-area-matches'>;
@@ -247,7 +247,7 @@ let booting = false;
 const nonceByKey: Record<string, number> = {};
 
 /**
- * GLOBAL plan-mutation queue — one chain for ALL dates. Plan generation reads
+ * GLOBAL plan-mutation queue: one chain for ALL dates. Plan generation reads
  * week-wide never-repeat state (weekSeenIds) and then commits its picks; two
  * dates planning concurrently (e.g. "Plan my whole week" fanning out over
  * seven days) could both read the same snapshot and pick the same venue
@@ -290,7 +290,7 @@ export function resolvePrefs(
  * AND a venue-identity key derived from the title. The venue key is what
  * catches a bucket wish ("Jazz set at the Village Vanguard") and a curated/
  * live listing for the SAME real place ("Live Jazz at the Village Vanguard")
- * as one venue, even though they carry different ids — otherwise both could
+ * as one venue, even though they carry different ids: otherwise both could
  * get scheduled as if they were two fresh, different picks.
  */
 function planCandidateKeys(plan: Plan): string[] {
@@ -355,7 +355,7 @@ async function loadAllInto(set: SetFn): Promise<void> {
   for (const p of dayPrefsList) dayPrefsByDate[p.date] = p;
 
   // Never-repeat memory is week-scoped (no venue repeats within a Mon-Sun
-  // week), so keep the CURRENT week's history — including days already past —
+  // week), so keep the CURRENT week's history: including days already past:
   // and prune anything from previous weeks so it cannot grow without bound.
   const seenByDate = await repository.getSeenMap();
   const weekStart = mondayOf(todayNY());
@@ -403,10 +403,16 @@ function healBucketList(items: BucketItem[]): BucketItem[] | null {
       changed = true;
       continue;
     }
+    // A saved item that is really a LIST HEADER ("Bucket list:") from an old
+    // paste is noise, not an activity: drop it outright.
+    if (!item.note && isListHeader(item.title)) {
+      changed = true;
+      continue;
+    }
     // Only treat an item as a pasted "mega-item" when the structure is
     // unambiguous: no note (the paste box never produces a note on a
     // multi-item blob) AND either a real newline or at least two numbered
-    // markers. Anything looser re-splits normal titles on every launch —
+    // markers. Anything looser re-splits normal titles on every launch:
     // "Dinner at Lilia walk-in at 5. bar seats" or a title with " - " in it
     // must never be shredded by the healer.
     const looksMega =
@@ -508,7 +514,7 @@ export const useStore = create<StoreState>((set, get) => ({
     await repository.saveProfile(profile);
     set({ profile });
     // New default neighborhoods apply to every day without a day-level
-    // override — enforce the invariant across all planned days.
+    // override: enforce the invariant across all planned days.
     await replanAllOutOfArea(set, get);
   },
 
@@ -560,20 +566,20 @@ export const useStore = create<StoreState>((set, get) => ({
     const cleared: DayPrefs = { date };
     set((s) => ({ dayPrefsByDate: { ...s.dayPrefsByDate, [date]: cleared } }));
     await repository.saveDayPrefs(cleared);
-    // Back to the profile defaults — same invariant as setDayPrefs.
+    // Back to the profile defaults: same invariant as setDayPrefs.
     await enqueuePlan(date, () => replanOutOfAreaWindows(set, get, date));
   },
 
   async clearDay(date) {
     // Route through the per-date plan queue so a clear can't interleave with an
-    // in-flight runPlan for the same day — otherwise that plan could commit
+    // in-flight runPlan for the same day: otherwise that plan could commit
     // AFTER the clear and resurrect the day. Remove free time (which also
     // prunes the day's plans), reset any day-only
     // prefs, and wipe the day's never-repeat memory. The availability change is
-    // inlined (not via setAvailability, which now enqueues its own work —
+    // inlined (not via setAvailability, which now enqueues its own work:
     // calling it from inside this queued task would deadlock the date's queue).
-    // The in-memory delete happens NOW, at call time — the same optimistic
-    // contract as setAvailability — so a later setAvailability (e.g. an "Add
+    // The in-memory delete happens NOW, at call time: the same optimistic
+    // contract as setAvailability: so a later setAvailability (e.g. an "Add
     // free time" preset tapped while this clear is still queued) is never
     // clobbered at dequeue time, which would leave memory and disk divergent
     // (ghost windows reappearing on restart).
@@ -585,7 +591,7 @@ export const useStore = create<StoreState>((set, get) => ({
     return enqueuePlan(date, async () => {
       await applyAvailability(set, get, { date, windows: [] });
       // Prefs reset is INLINED (clearDayPrefs now enqueues a replan pass of
-      // its own — calling it from inside this queued task would deadlock).
+      // its own: calling it from inside this queued task would deadlock).
       // No replan is needed here anyway: the day's windows are gone.
       const cleared: DayPrefs = { date };
       set((s) => ({ dayPrefsByDate: { ...s.dayPrefsByDate, [date]: cleared } }));
@@ -660,7 +666,7 @@ export const useStore = create<StoreState>((set, get) => ({
   async generatePlan(date, window, modifier) {
     // "Ensure planned", not "regenerate": auto-planning (applyAvailability)
     // usually got here first, and a UI ensure-effect may have queued behind
-    // it — if the window already has a plan by the time this dequeues, keep
+    // it: if the window already has a plan by the time this dequeues, keep
     // it. Reshuffles go through reshufflePlan/reshuffleDay instead.
     return enqueuePlan(date, async () => {
       const key = planKey(date, window);
@@ -713,7 +719,7 @@ export const useStore = create<StoreState>((set, get) => ({
 
     // Commit INSIDE the per-date plan queue: every other plan mutation
     // (generate/reshuffle/clear) serializes through it, so a queued reshuffle
-    // can never land between our re-validation below and the commit — a swap
+    // can never land between our re-validation below and the commit: a swap
     // that committed outside the queue could overwrite a freshly reshuffled
     // plan with one built from a stale snapshot.
     let committed = false;
@@ -738,7 +744,7 @@ export const useStore = create<StoreState>((set, get) => ({
       // The pick itself was chosen from a PRE-queue snapshot: a concurrent
       // swap on a sibling stop/window (or an in-flight re-plan) may have
       // consumed this exact venue while our provider fetch ran. Re-check it
-      // against the FRESH day state — day-scoped, not week-scoped, so an
+      // against the FRESH day state: day-scoped, not week-scoped, so an
       // intentional week-repeat fallback pick still passes, but a same-day
       // duplicate never commits.
       const freshDaySeen = new Set([
@@ -832,10 +838,10 @@ export const useStore = create<StoreState>((set, get) => ({
 
 /**
  * Persist an availability change, prune plans whose window no longer exists
- * (resized/removed blocks), and AUTO-PLAN every window that has no plan yet —
+ * (resized/removed blocks), and AUTO-PLAN every window that has no plan yet:
  * painting free time IS planning it, and moving a window re-plans it in place.
  * Runs INSIDE the per-date plan queue (the in-memory window update happens
- * optimistically before enqueueing) — only call this from already-queued work.
+ * optimistically before enqueueing): only call this from already-queued work.
  */
 async function applyAvailability(
   set: SetFn,
@@ -889,7 +895,7 @@ async function addSeen(
  * holds a stop OUTSIDE the day's (freshly resolved) neighborhoods is re-planned
  * on the spot. The outgoing plan's venues are released first (same contract as
  * a moved window) so in-area stops are free to survive the re-plan. Windows
- * whose plans already fit are left untouched — adding neighborhoods never
+ * whose plans already fit are left untouched: adding neighborhoods never
  * churns a valid plan. Location-agnostic stops (no neighborhood, e.g. the
  * user's own bucket wishes) always fit. Runs INSIDE the plan queue.
  */
@@ -958,7 +964,7 @@ async function retirePlanCandidates(
  * Every candidate id/venue-key already used ANYWHERE in `date`'s Mon-Sun week:
  * the week's never-repeat memory plus everything scheduled in the week's
  * current plans. This is the exclusion set for planning, reshuffles, and
- * swaps — a venue suggested on Monday (by any candidate id) cannot come back
+ * swaps: a venue suggested on Monday (by any candidate id) cannot come back
  * on Thursday under a different id for the same real place.
  */
 function weekSeenIds(s: StoreState, date: string): Set<string> {
@@ -1013,7 +1019,7 @@ function pickByIntent(
     }
     default: {
       // Exhaustiveness check: a new SwapIntent member must be handled above
-      // (a case here, or a CUISINE_INTENTS/TAG_INTENTS entry) — growing the
+      // (a case here, or a CUISINE_INTENTS/TAG_INTENTS entry): growing the
       // union is a compile error, never a silent top-pick fallthrough.
       const unhandled: never = intent;
       return unhandled;
@@ -1023,8 +1029,8 @@ function pickByIntent(
 
 /**
  * Candidates that could fill an existing block's slot: same category (unless
- * an explicit category-override intent is given — see CROSS_CATEGORY_INTENTS),
- * allowed at that hour, fits the slot, and not already used this week — with
+ * an explicit category-override intent is given: see CROSS_CATEGORY_INTENTS),
+ * allowed at that hour, fits the slot, and not already used this week: with
  * a this-date-only fallback when the week-wide filter empties the pool, so a
  * venue from another day can return rather than a dead end (never a same-day
  * repeat). Price-filtered first; if that starves the list, the price filter
@@ -1077,14 +1083,14 @@ async function slotCandidates(
       .filter((i) => i.kind !== 'walk' && i.kind !== 'break')
       .flatMap((i) => [i.sourceId ?? i.bucketItemId ?? i.id, venueKey(i.title)]),
   );
-  // The no-repeat rule: everything already used anywhere this week is out —
+  // The no-repeat rule: everything already used anywhere this week is out:
   // with a fallback (below) to this-date-only exclusion when the week filter
   // empties the pool entirely, so alternatives never hit a dead wall while
   // the city still has venues to offer.
   const weekSeen = weekSeenIds(get(), date);
 
   // An explicit category ask ("Coffee", "Outdoors", "Italian"...) overrides
-  // this stop's current kind entirely — you should be able to turn a dinner
+  // this stop's current kind entirely: you should be able to turn a dinner
   // into a park visit, or an activity into a coffee stop, by naming what you
   // actually want. Cheaper/pricier/surprise/indoor stay within today's kind
   // (a "cheaper dinner" should still be dinner).
@@ -1112,7 +1118,7 @@ async function slotCandidates(
     });
 
   // Week-wide no-repeat first; when that leaves nothing that can satisfy the
-  // ask, fall back to excluding only this date's own history — a venue from
+  // ask, fall back to excluding only this date's own history: a venue from
   // earlier in the week beats a dead "nothing fits" wall, and an explicit
   // cuisine/vibe tap ("Thai") should surface the area's Thai spot even if it
   // appeared on another day. Same-day repeats stay impossible.
@@ -1183,7 +1189,7 @@ async function slotCandidates(
     .map((c) => ({ c, score: scoreCandidate(c, ctx) }))
     .sort((a, b) => b.score - a.score || hash(a.c.id) - hash(b.c.id))
     .map((s) => s.c);
-  // NOTE: intentionally uncapped — swap intents filter this list (cheaper/
+  // NOTE: intentionally uncapped: swap intents filter this list (cheaper/
   // pricier/indoor), so truncating here would falsely report exhaustion.
   // The display-only "Other options" list caps in alternativesForItem.
 }
@@ -1210,7 +1216,7 @@ async function runPlan(
     ]);
 
     // Record (or clear) the provider's "live answered, nothing in-area" note
-    // so the day panel can say curated picks substituted — distinguishing
+    // so the day panel can say curated picks substituted: distinguishing
     // that from a live failure instead of rendering the two identically.
     set((s) => {
       if (eventsRes.note) {
@@ -1247,7 +1253,7 @@ async function runPlan(
 
     // NYC never runs dry: if the week-wide no-repeat rule left this window
     // with NOTHING (catalog exhausted for these neighborhoods), retry
-    // excluding only THIS DATE's history — a venue from earlier in the week
+    // excluding only THIS DATE's history: a venue from earlier in the week
     // beats a dead window. Same-day repeats stay impossible.
     const hasStops = (p: Plan) =>
       p.items.some((i) => i.kind !== 'walk' && i.kind !== 'break');

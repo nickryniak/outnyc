@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — tests for lib/geo.ts
+// OutNYC: tests for lib/geo.ts
 // =============================================================================
 
 import { NEIGHBORHOODS } from './constants';
@@ -40,7 +40,7 @@ describe('nearestNeighborhood', () => {
   it('maps known venue coordinates onto their neighborhoods', () => {
     // The Village Vanguard (178 7th Ave S).
     expect(nearestNeighborhood(40.7359, -74.0008)).toBe('West Village');
-    // Lilia (567 Union Ave) — central Williamsburg.
+    // Lilia (567 Union Ave): central Williamsburg.
     expect(nearestNeighborhood(40.7146, -73.9563)).toBe('Williamsburg');
     // The Dead Rabbit (30 Water St).
     expect(nearestNeighborhood(40.7033, -74.0114)).toBe('Financial District');
@@ -49,9 +49,9 @@ describe('nearestNeighborhood', () => {
   });
 
   it('returns OUTSIDE_AREA_LABEL for venues beyond every neighborhood footprint', () => {
-    // JFK Airport — nowhere near any supported neighborhood.
+    // JFK Airport: nowhere near any supported neighborhood.
     expect(nearestNeighborhood(40.6413, -73.7781)).toBe(OUTSIDE_AREA_LABEL);
-    // Coney Island — miles south of the closest centroid (Park Slope).
+    // Coney Island: miles south of the closest centroid (Park Slope).
     expect(nearestNeighborhood(40.5755, -73.9707)).toBe(OUTSIDE_AREA_LABEL);
   });
 

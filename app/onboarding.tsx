@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — onboarding (app/onboarding.tsx)
+// OutNYC: onboarding (app/onboarding.tsx)
 // =============================================================================
 // Sets party size, neighborhoods, price range, and interests. Doubles as the
 // "Edit preferences" screen (opened from Settings with ?edit=1).

@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — tests for lib/format.ts
+// OutNYC: tests for lib/format.ts
 // =============================================================================
 
 import { priceLabel, ratingText } from './format';

@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — shared display formatters (lib/format.ts)
+// OutNYC: shared display formatters (lib/format.ts)
 // =============================================================================
 // Tiny label helpers used anywhere a candidate or plan item is rendered, so
 // price and rating read identically across the calendar, day panel, and cards.

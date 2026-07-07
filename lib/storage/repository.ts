@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — Repository interface (lib/storage/repository.ts)
+// OutNYC: Repository interface (lib/storage/repository.ts)
 // =============================================================================
 // The persistence contract. Screens and the store depend ONLY on this interface
 // (never on a concrete impl), so a Supabase-backed Repository can be swapped in

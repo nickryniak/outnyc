@@ -1,5 +1,5 @@
 -- =============================================================================
--- OutNYC — initial schema (0001_init.sql)
+-- OutNYC: initial schema (0001_init.sql)
 -- =============================================================================
 -- Pasteable into the Supabase SQL editor (Project -> SQL Editor -> New query).
 --
@@ -11,7 +11,7 @@
 --
 -- Single-user v1: every table carries a `user_id` that DEFAULTS to a fixed
 -- sentinel ('00000000-0000-0000-0000-000000000000'). This lets v1 ignore auth
--- entirely while leaving the door open for real multi-user later — just start
+-- entirely while leaving the door open for real multi-user later: just start
 -- populating user_id from auth.uid() and flip on the RLS policies at the bottom.
 --
 -- Domain mapping (keep in sync with lib/types.ts):
@@ -69,7 +69,7 @@ create table if not exists public.availability (
   user_id     uuid not null default '00000000-0000-0000-0000-000000000000',
   -- America/New_York local date as 'YYYY-MM-DD'.
   date        date not null,
-  -- [{ "start": "HH:MM", "end": "HH:MM" }, ...] — 24h local times.
+  -- [{ "start": "HH:MM", "end": "HH:MM" }, ...]: 24h local times.
   windows     jsonb not null default '[]'::jsonb,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now(),
@@ -162,7 +162,7 @@ create table if not exists public.plan_item (
   lat            double precision,
   lng            double precision,
   address        text,
-  -- deep-link out for "Book"/"Tickets" — the app only Linking-opens this, never auto-books.
+  -- deep-link out for "Book"/"Tickets": the app only Linking-opens this, never auto-books.
   booking_url    text,
   -- id of the upstream candidate (event/place) this stop came from, if any.
   source_id      text,
@@ -225,7 +225,7 @@ end;
 $$;
 
 -- =============================================================================
--- SEED — mirrors the on-device seed in lib/constants.ts so a fresh Supabase
+-- SEED: mirrors the on-device seed in lib/constants.ts so a fresh Supabase
 -- project matches a fresh install. Uses the v1 single-user sentinel.
 -- Idempotent: safe to re-run (on conflict do nothing).
 -- =============================================================================
@@ -250,10 +250,10 @@ insert into public.bucket_list
 values
   ('00000000-0000-0000-0000-000000000000', 'Catch sunset on the High Line',          'Best near sunset; walk the whole stretch.', 'Chelsea',          1, array['outdoors','walk'],      false, 0),
   ('00000000-0000-0000-0000-000000000000', 'Jazz set at the Village Vanguard',        'Reserve ahead; iconic basement room.',      'West Village',     3, array['live music'],          false, 1),
-  ('00000000-0000-0000-0000-000000000000', 'Slice crawl: 2 Bros, Stromboli, then Artichoke', 'Three East Village classics in one walkable night — St. Marks Pl to 14th St, one slice each.', 'East Village', 1, array['food'],       false, 2),
+  ('00000000-0000-0000-0000-000000000000', 'Slice crawl: 2 Bros, Stromboli, then Artichoke', 'Three East Village classics in one walkable night: St. Marks Pl to 14th St, one slice each.', 'East Village', 1, array['food'],       false, 2),
   ('00000000-0000-0000-0000-000000000000', 'Smorgasburg on a Saturday',               'Go hungry; cash + card.',                   'Williamsburg',     2, array['food','outdoors'],     false, 3),
-  ('00000000-0000-0000-0000-000000000000', 'Late-night ramen at Ippudo',              'Rich pork-broth bowls on 4th Ave — the kitchen runs late for the after-show crowd.', 'East Village', 2, array['food','late-night'], false, 4),
-  ('00000000-0000-0000-0000-000000000000', 'Rooftop drinks at Overstory',             'Sunset over the harbor from the 64th floor — reserve ahead.', 'Financial District', 3, array['bar','rooftop'],  false, 5),
+  ('00000000-0000-0000-0000-000000000000', 'Late-night ramen at Ippudo',              'Rich pork-broth bowls on 4th Ave: the kitchen runs late for the after-show crowd.', 'East Village', 2, array['food','late-night'], false, 4),
+  ('00000000-0000-0000-0000-000000000000', 'Rooftop drinks at Overstory',             'Sunset over the harbor from the 64th floor: reserve ahead.', 'Financial District', 3, array['bar','rooftop'],  false, 5),
   ('00000000-0000-0000-0000-000000000000', 'Brooklyn Bridge walk at golden hour',     'Start Manhattan side, end in DUMBO.',       'DUMBO',            1, array['outdoors','walk'],     false, 6),
   ('00000000-0000-0000-0000-000000000000', 'See a show at the Comedy Cellar',         'Standby line moves fast on weeknights.',    'West Village',     2, array['comedy'],              false, 7)
 on conflict do nothing;

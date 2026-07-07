@@ -1,10 +1,10 @@
 // =============================================================================
-// OutNYC — NYC Parks events provider (lib/providers/nycParksProvider.ts)
+// OutNYC: NYC Parks events provider (lib/providers/nycParksProvider.ts)
 // =============================================================================
 // Real, public, key-free data: NYC Parks' "Public Events – Upcoming 14 Days"
-// dataset (dataset id w3wp-dpdi, verified live at data.cityofnewyork.us) —
+// dataset (dataset id w3wp-dpdi, verified live at data.cityofnewyork.us):
 // concerts, nature walks, workshops, and free theater across the city's parks.
-// No key required — always attempted.
+// No key required: always attempted.
 //
 // A live sample of this dataset skews heavily toward kids' recreation-center
 // programming and volunteer clean-ups, so those categories are filtered out,
@@ -12,7 +12,7 @@
 // present here, so the neighborhood is snapped the same way as the other live
 // providers (lib/geo.ts), never fabricated.
 //
-// NEVER throws — returns [] on any failure so other event sources still load.
+// NEVER throws: returns [] on any failure so other event sources still load.
 // =============================================================================
 
 import { nearestNeighborhood, OUTSIDE_AREA_LABEL } from '../geo';
@@ -23,7 +23,7 @@ import { fetchJson, isOnline } from './net';
 const DATASET_URL = 'https://data.cityofnewyork.us/resource/w3wp-dpdi.json';
 
 // Categories to exclude, verified against a live same-day sample of this
-// dataset's actual category vocabulary — the bulk of it is kids'/rec-center
+// dataset's actual category vocabulary: the bulk of it is kids'/rec-center
 // day programming and park clean-up volunteering, not general public outings.
 const EXCLUDE_CATEGORIES = [
   'recreation center programming',
@@ -61,7 +61,7 @@ function parseAmPm(raw: unknown): string | null {
   return `${String(h).padStart(2, '0')}:${min}`;
 }
 
-/** The dataset fields actually read — compile-time documentation, not runtime validation. */
+/** The dataset fields actually read: compile-time documentation, not runtime validation. */
 interface NycParksEventRow {
   guid?: string;
   title?: string;
@@ -80,7 +80,7 @@ function toCandidate(row: NycParksEventRow): Candidate | null {
   const categories: string = typeof row?.categories === 'string' ? row.categories : '';
   if (typeof name !== 'string') return null;
   // Cancelled events stay in the feed with a "CANCELED:"/"CANCELLED:" title
-  // prefix rather than being removed (verified in a live sample) — never
+  // prefix rather than being removed (verified in a live sample): never
   // recommend one.
   if (/^cancell?ed:/i.test(name.trim())) return null;
   const lower = categories.toLowerCase();
@@ -122,7 +122,7 @@ function toCandidate(row: NycParksEventRow): Candidate | null {
         ? row.description.slice(0, 160)
         : `Park event at ${row?.parknames ?? 'a NYC park'}.`,
     tags: categoryTags(categories),
-    // A recurring drop-in park program, not a ticketed must-attend show — the
+    // A recurring drop-in park program, not a ticketed must-attend show: the
     // planner may skip it rather than force an unfillable gap around it.
     soft: true,
   };

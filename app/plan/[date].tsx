@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — plan a day (app/plan/[date].tsx)
+// OutNYC: plan a day (app/plan/[date].tsx)
 // =============================================================================
 // A city-guide layout: each free-time window gets a skyline hero and a
 // numbered itinerary. Reshuffle and swap live on the calendar screen, not here.
@@ -79,7 +79,7 @@ function WindowPlan({ date, window }: { date: string; window: TimeWindow }) {
   }, [key]);
 
   // A not-yet-planned, not-errored window is LOADING (the mount effect is
-  // about to plan it) — never "Nothing fit this window" on first paint.
+  // about to plan it): never "Nothing fit this window" on first paint.
   const isPlanning =
     planning?.status === 'planning' || (!plan && planning?.status !== 'error');
 

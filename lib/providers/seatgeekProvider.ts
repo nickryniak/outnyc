@@ -1,9 +1,9 @@
 // =============================================================================
-// OutNYC — SeatGeek events provider (lib/providers/seatgeekProvider.ts)
+// OutNYC: SeatGeek events provider (lib/providers/seatgeekProvider.ts)
 // =============================================================================
-// A second real event source alongside Ticketmaster — SeatGeek's catalog often
+// A second real event source alongside Ticketmaster: SeatGeek's catalog often
 // covers indie venues, sports, and comedy that Ticketmaster misses. Key-gated
-// on EXPO_PUBLIC_SEATGEEK_CLIENT_ID; returns [] (never seed data — the
+// on EXPO_PUBLIC_SEATGEEK_CLIENT_ID; returns [] (never seed data: the
 // eventsProvider owns the seed floor) when no key is set or on any failure.
 // NEVER throws.
 //
@@ -35,7 +35,7 @@ function sgPriceTier(lowest: unknown): PriceTier | undefined {
   return 4;
 }
 
-// The SeatGeek fields actually read — compile-time documentation, not
+// The SeatGeek fields actually read: compile-time documentation, not
 // runtime validation (hence optional everywhere; the mapper stays defensive).
 interface SeatGeekVenue {
   name?: string;

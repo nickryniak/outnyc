@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — providers barrel (lib/providers/index.ts)
+// OutNYC: providers barrel (lib/providers/index.ts)
 // =============================================================================
 export { eventsProvider } from './eventsProvider';
 export type { ProviderResult } from './eventsProvider';

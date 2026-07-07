@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — NYC seed data (lib/constants.ts)
+// OutNYC: NYC seed data (lib/constants.ts)
 // =============================================================================
 // The curated NYC guide that powers the zero-key experience.
 //   - SEED_PROFILE mirrors the profile seed in supabase/migrations/0001_init.sql
@@ -61,12 +61,14 @@ export const SEED_PROFILE: Profile = {
   onboarded: false,
 };
 
-/** Bucket-list seed. Mirrors BUCKET_SEED in 0001_init.sql (same order + fields). */
+/** Bucket-list seed. Mirrors BUCKET_SEED in 0001_init.sql (same order + fields).
+ *  Notes are written for someone who has never heard of the place: what it IS,
+ *  then how to do it right. Plain punctuation only (no em dashes anywhere). */
 export const BUCKET_SEED: BucketItem[] = [
   {
     id: 'seed-bucket-0',
     title: 'Catch sunset on the High Line',
-    note: 'Best near sunset; walk the whole stretch.',
+    note: 'An elevated park built on an old freight rail line, 30 feet above the west side streets. Enter at Gansevoort St and walk the planted mile and a half north as the sun drops over the Hudson.',
     neighborhood: 'Chelsea',
     priceTier: 1,
     tags: ['outdoors', 'walk'],
@@ -76,7 +78,7 @@ export const BUCKET_SEED: BucketItem[] = [
   {
     id: 'seed-bucket-1',
     title: 'Jazz set at the Village Vanguard',
-    note: 'Reserve ahead; iconic basement room.',
+    note: 'The most famous basement jazz club in the world, a tiny wedge-shaped room open since 1935. Every jazz great has played it. Two sets a night; reserve ahead.',
     neighborhood: 'West Village',
     priceTier: 3,
     tags: ['live music'],
@@ -86,7 +88,7 @@ export const BUCKET_SEED: BucketItem[] = [
   {
     id: 'seed-bucket-2',
     title: 'Slice crawl: 2 Bros, Stromboli, then Artichoke',
-    note: 'Three East Village classics in one walkable night — St. Marks Pl to 14th St, one slice each.',
+    note: 'Three famous East Village pizza counters within a 15 minute walk of each other: a one dollar-ish thin slice, a corner-shop classic, and a thick slice smothered in artichoke cream. One slice at each.',
     neighborhood: 'East Village',
     priceTier: 1,
     tags: ['food'],
@@ -96,7 +98,7 @@ export const BUCKET_SEED: BucketItem[] = [
   {
     id: 'seed-bucket-3',
     title: 'Smorgasburg on a Saturday',
-    note: 'Go hungry; cash and card.',
+    note: 'A huge open-air food market on the Williamsburg waterfront, every Saturday: dozens of vendors selling one famous thing each, with the Manhattan skyline across the river. Go hungry.',
     neighborhood: 'Williamsburg',
     priceTier: 2,
     tags: ['food', 'outdoors'],
@@ -106,7 +108,7 @@ export const BUCKET_SEED: BucketItem[] = [
   {
     id: 'seed-bucket-4',
     title: 'Late-night ramen at Ippudo',
-    note: 'Rich pork-broth bowls on 4th Ave — the kitchen runs late for the after-show crowd.',
+    note: 'The New York outpost of a famous Japanese ramen house: rich pork-broth noodle bowls, a shouted welcome when you walk in, and a kitchen that runs late. Perfect after a show.',
     neighborhood: 'East Village',
     priceTier: 2,
     tags: ['food', 'late-night'],
@@ -116,7 +118,7 @@ export const BUCKET_SEED: BucketItem[] = [
   {
     id: 'seed-bucket-5',
     title: 'Rooftop drinks at Overstory',
-    note: 'Sunset over the harbor from the 64th floor — reserve ahead.',
+    note: 'A small cocktail bar wrapped around the 64th floor of a downtown tower, with open-air views over the harbor and the bridges. Go near sunset and reserve ahead.',
     neighborhood: 'Financial District',
     priceTier: 3,
     tags: ['bar', 'rooftop'],
@@ -126,7 +128,7 @@ export const BUCKET_SEED: BucketItem[] = [
   {
     id: 'seed-bucket-6',
     title: 'Brooklyn Bridge walk at golden hour',
-    note: 'Start Manhattan side, end in DUMBO.',
+    note: 'The classic walk across the 1883 bridge on its raised wooden promenade, with the skyline behind you and the harbor below. Start at City Hall in Manhattan and come down in DUMBO for the photo everyone takes.',
     neighborhood: 'DUMBO',
     priceTier: 1,
     tags: ['outdoors', 'walk'],
@@ -136,7 +138,7 @@ export const BUCKET_SEED: BucketItem[] = [
   {
     id: 'seed-bucket-7',
     title: 'See a show at the Comedy Cellar',
-    note: 'Standby line moves fast on weeknights.',
+    note: 'A low-ceilinged Greenwich Village basement that is the most famous stand-up room in America. Big names drop in unannounced. The standby line moves fast on weeknights.',
     neighborhood: 'West Village',
     priceTier: 2,
     tags: ['comedy'],
@@ -161,7 +163,7 @@ const CORE_EVENTS: Candidate[] = [
     lng: -74.0008,
     address: '178 7th Ave S, New York, NY',
     bookingUrl: 'https://villagevanguard.com/',
-    description: 'Jazz club — the most storied basement listening room in the city, running since 1935.',
+    description: 'Jazz club: the most storied basement listening room in the city, running since 1935.',
     tags: ['live music'],
   },
   {
@@ -176,7 +178,7 @@ const CORE_EVENTS: Candidate[] = [
     lng: -74.0007,
     address: '117 MacDougal St, New York, NY',
     bookingUrl: 'https://www.comedycellar.com/',
-    description: 'Comedy club — low-ceilinged stand-up room where big names drop in unannounced.',
+    description: 'Comedy club: low-ceilinged stand-up room where big names drop in unannounced.',
     tags: ['comedy'],
   },
   {
@@ -191,7 +193,7 @@ const CORE_EVENTS: Candidate[] = [
     lng: -73.9937,
     address: '6 Delancey St, New York, NY',
     bookingUrl: 'https://www.boweryballroom.com/',
-    description: 'Live-music venue — beloved 575-person room with balcony views and sharp bookings.',
+    description: 'Live-music venue: beloved 575-person room with balcony views and sharp bookings.',
     tags: ['live music'],
   },
   {
@@ -206,7 +208,7 @@ const CORE_EVENTS: Candidate[] = [
     lng: -73.9576,
     address: '61 Wythe Ave, Brooklyn, NY',
     bookingUrl: 'https://www.brooklynbowl.com/',
-    description: 'Live-music venue and bowling alley — lanes, fried chicken, and a serious stage.',
+    description: 'Live-music venue and bowling alley: lanes, fried chicken, and a serious stage.',
     tags: ['live music'],
   },
   {
@@ -221,7 +223,7 @@ const CORE_EVENTS: Candidate[] = [
     lng: -74.0048,
     address: '209 W Houston St, New York, NY',
     bookingUrl: 'https://filmforum.org/',
-    description: 'Independent movie theater — nonprofit cinema for classic and new art films.',
+    description: 'Independent movie theater: nonprofit cinema for classic and new art films.',
     tags: ['film', 'art'],
   },
   {
@@ -236,7 +238,7 @@ const CORE_EVENTS: Candidate[] = [
     lng: -74.0048,
     address: 'The High Line, New York, NY',
     bookingUrl: 'https://www.thehighline.org/',
-    description: 'Outdoor art walk — elevated park with rotating public art and Hudson River views.',
+    description: 'Outdoor art walk: elevated park with rotating public art and Hudson River views.',
     tags: ['outdoors', 'art', 'walk'],
   },
   {
@@ -251,7 +253,7 @@ const CORE_EVENTS: Candidate[] = [
     lng: -73.9874,
     address: '217 E Houston St, New York, NY',
     bookingUrl: 'https://www.mercuryloungenyc.com/',
-    description: 'Small live-music club — tiny rock room where breakout acts play first.',
+    description: 'Small live-music club: tiny rock room where breakout acts play first.',
     tags: ['live music'],
   },
   // ---- Daytime activities (flexible timing; fill morning/afternoon windows) --
@@ -267,7 +269,7 @@ const CORE_EVENTS: Candidate[] = [
     lng: -74.0048,
     address: 'The High Line, New York, NY',
     bookingUrl: 'https://www.thehighline.org/',
-    description: 'Elevated park walk — 1.5 miles on an old rail line from the Village to Hudson Yards.',
+    description: 'Elevated park walk: 1.5 miles on an old rail line from the Village to Hudson Yards.',
     tags: ['outdoors', 'walk', 'art'],
   },
   {
@@ -281,7 +283,7 @@ const CORE_EVENTS: Candidate[] = [
     lng: -73.9973,
     address: 'Washington Square Park, New York, NY',
     bookingUrl: 'https://www.nycgovparks.org/parks/washington-square-park',
-    description: 'Public park — the Village living room: buskers, chess hustlers, and the marble arch.',
+    description: 'Public park: the Village living room: buskers, chess hustlers, and the marble arch.',
     tags: ['outdoors', 'walk'],
   },
   {
@@ -295,7 +297,7 @@ const CORE_EVENTS: Candidate[] = [
     lng: -73.99,
     address: '103 Orchard St, New York, NY',
     bookingUrl: 'https://www.tenement.org/',
-    description: 'History museum — guided tours through preserved 1800s immigrant apartments.',
+    description: 'History museum: guided tours through preserved 1800s immigrant apartments.',
     tags: ['art', 'walk'],
   },
   {
@@ -309,7 +311,7 @@ const CORE_EVENTS: Candidate[] = [
     lng: -73.9959,
     address: 'Brooklyn Bridge Park, Brooklyn, NY',
     bookingUrl: 'https://brooklynbridgepark.org/',
-    description: 'Waterfront park — lawns, piers, and a restored 1922 carousel under the bridge.',
+    description: 'Waterfront park: lawns, piers, and a restored 1922 carousel under the bridge.',
     tags: ['outdoors', 'walk'],
   },
   {
@@ -323,7 +325,7 @@ const CORE_EVENTS: Candidate[] = [
     lng: -73.9235,
     address: 'Troutman St & St Nicholas Ave, Brooklyn, NY',
     bookingUrl: 'http://thebushwickcollective.com/',
-    description: 'Outdoor street-art gallery — blocks of large murals by a rotating cast of artists.',
+    description: 'Outdoor street-art gallery: blocks of large murals by a rotating cast of artists.',
     tags: ['art', 'walk', 'outdoors'],
   },
   {
@@ -337,7 +339,7 @@ const CORE_EVENTS: Candidate[] = [
     lng: -73.9242,
     address: '36-01 35th Ave, Astoria, NY',
     bookingUrl: 'https://movingimage.org/',
-    description: 'Film and TV museum — screen history in Astoria, from Muppets to movie cameras.',
+    description: 'Film and TV museum: screen history in Astoria, from Muppets to movie cameras.',
     tags: ['film', 'art'],
   },
   {
@@ -351,7 +353,7 @@ const CORE_EVENTS: Candidate[] = [
     lng: -73.9503,
     address: '253 W 125th St, New York, NY',
     bookingUrl: 'https://www.apollotheater.org/',
-    description: 'Landmark walk — 125th Street past the Apollo Theater marquee and Harlem classics.',
+    description: 'Landmark walk: 125th Street past the Apollo Theater marquee and Harlem classics.',
     tags: ['walk', 'live music'],
   },
   {
@@ -365,7 +367,7 @@ const CORE_EVENTS: Candidate[] = [
     lng: -74.0134,
     address: 'Whitehall Terminal, New York, NY',
     bookingUrl: 'https://www.siferry.com/',
-    description: 'Free harbor ferry ride — Statue of Liberty views, then a stroll in Battery Park.',
+    description: 'Free harbor ferry ride: Statue of Liberty views, then a stroll in Battery Park.',
     tags: ['outdoors', 'walk'],
   },
   {
@@ -379,7 +381,7 @@ const CORE_EVENTS: Candidate[] = [
     lng: -73.9585,
     address: 'WNW Transmitter Park, Brooklyn, NY',
     bookingUrl: 'https://www.nycgovparks.org/parks/transmitter-park',
-    description: 'Small waterfront park — a lawn and pier with a straight-on midtown skyline view.',
+    description: 'Small waterfront park: a lawn and pier with a straight-on midtown skyline view.',
     tags: ['outdoors', 'walk'],
   },
   {
@@ -392,7 +394,7 @@ const CORE_EVENTS: Candidate[] = [
     lat: 40.7233,
     lng: -74.0011,
     address: 'Broadway & Prince St, New York, NY',
-    description: 'Gallery and shopping walk — cast-iron blocks of art galleries and flagship stores.',
+    description: 'Gallery and shopping walk: cast-iron blocks of art galleries and flagship stores.',
     tags: ['art', 'walk'],
   },
   // ---- Fixed-time daytime events ------------------------------------------
@@ -408,7 +410,7 @@ const CORE_EVENTS: Candidate[] = [
     lng: -74.0048,
     address: '209 W Houston St, New York, NY',
     bookingUrl: 'https://filmforum.org/',
-    description: 'Independent movie theater — an afternoon classic-film screening.',
+    description: 'Independent movie theater: an afternoon classic-film screening.',
     tags: ['film', 'art'],
   },
   {
@@ -423,7 +425,7 @@ const CORE_EVENTS: Candidate[] = [
     lng: -73.9903,
     address: '80 Pearl St, Brooklyn, NY',
     bookingUrl: 'https://brooklynflea.com/',
-    description: 'Outdoor flea market — weekend vintage, records, and local makers under the arches.',
+    description: 'Outdoor flea market: weekend vintage, records, and local makers under the arches.',
     tags: ['outdoors', 'walk'],
   },
 ];
@@ -442,7 +444,7 @@ const CORE_PLACES: Candidate[] = [
     address: '51 Grove St, New York, NY',
     bookingUrl: 'https://www.viacarota.com/',
     cuisine: 'Italian',
-    description: 'Italian trattoria — rustic Village favorite for pasta; no reservations, go early.',
+    description: 'Italian trattoria: rustic Village favorite for pasta; no reservations, go early.',
     tags: ['food'],
   },
   {
@@ -457,7 +459,7 @@ const CORE_PLACES: Candidate[] = [
     address: '7 Carmine St, New York, NY',
     bookingUrl: 'https://www.joespizzanyc.com/',
     cuisine: 'Pizza',
-    description: 'Classic pizza joint — the benchmark New York slice, eaten standing up.',
+    description: 'Classic pizza joint: the benchmark New York slice, eaten standing up.',
     tags: ['food', 'late-night'],
   },
   {
@@ -472,7 +474,7 @@ const CORE_PLACES: Candidate[] = [
     address: '205 E Houston St, New York, NY',
     bookingUrl: 'https://katzsdelicatessen.com/',
     cuisine: 'Deli',
-    description: 'Jewish deli — pastrami on rye at the famous 1888 institution; take a ticket.',
+    description: 'Jewish deli: pastrami on rye at the famous 1888 institution; take a ticket.',
     tags: ['food'],
   },
   {
@@ -487,7 +489,7 @@ const CORE_PLACES: Candidate[] = [
     address: '65 4th Ave, New York, NY',
     bookingUrl: 'https://www.ippudo-us.com/',
     cuisine: 'Japanese',
-    description: 'Japanese ramen shop — rich pork-broth noodle bowls; expect a wait.',
+    description: 'Japanese ramen shop: rich pork-broth noodle bowls; expect a wait.',
     tags: ['food', 'late-night'],
   },
   {
@@ -502,7 +504,7 @@ const CORE_PLACES: Candidate[] = [
     address: '321 E 14th St, New York, NY',
     bookingUrl: 'https://www.artichokepizza.com/',
     cuisine: 'Pizza',
-    description: 'Late-night pizza counter — the famously heavy artichoke-cream slice.',
+    description: 'Late-night pizza counter: the famously heavy artichoke-cream slice.',
     tags: ['food', 'late-night'],
   },
   {
@@ -516,7 +518,7 @@ const CORE_PLACES: Candidate[] = [
     lng: -73.9916,
     address: '134 Eldridge St, New York, NY',
     bookingUrl: 'https://attaboy.us/',
-    description: 'Craft cocktail bar — no menu; bartenders mix to your taste behind an unmarked door.',
+    description: 'Craft cocktail bar: no menu; bartenders mix to your taste behind an unmarked door.',
     tags: ['bar'],
   },
   {
@@ -530,7 +532,7 @@ const CORE_PLACES: Candidate[] = [
     lng: -74.0061,
     address: '510 Hudson St, New York, NY',
     bookingUrl: 'https://www.employeesonlynyc.com/',
-    description: 'Cocktail bar — speakeasy-style institution with a late-night kitchen.',
+    description: 'Cocktail bar: speakeasy-style institution with a late-night kitchen.',
     tags: ['bar'],
   },
   {
@@ -544,7 +546,7 @@ const CORE_PLACES: Candidate[] = [
     lng: -73.9573,
     address: '111 N 12th St, Brooklyn, NY',
     bookingUrl: 'https://westlightnyc.com/',
-    description: 'Rooftop cocktail bar — 22nd floor, with a full sweep of the Manhattan skyline.',
+    description: 'Rooftop cocktail bar: 22nd floor, with a full sweep of the Manhattan skyline.',
     tags: ['bar', 'rooftop'],
   },
   {
@@ -559,7 +561,7 @@ const CORE_PLACES: Candidate[] = [
     address: '50 Withers St, Brooklyn, NY',
     bookingUrl: 'https://www.llamainn.com/',
     cuisine: 'Peruvian',
-    description: 'Peruvian restaurant — inventive plates; the beef tenderloin skewers are the move.',
+    description: 'Peruvian restaurant: inventive plates; the beef tenderloin skewers are the move.',
     tags: ['food'],
   },
   {
@@ -574,7 +576,7 @@ const CORE_PLACES: Candidate[] = [
     address: '567 Union Ave, Brooklyn, NY',
     bookingUrl: 'https://www.lilianewyork.com/',
     cuisine: 'Italian',
-    description: 'Italian restaurant — wood-fired seafood and handmade pasta from Missy Robbins.',
+    description: 'Italian restaurant: wood-fired seafood and handmade pasta from Missy Robbins.',
     tags: ['food'],
   },
   {
@@ -589,7 +591,7 @@ const CORE_PLACES: Candidate[] = [
     address: '80 Spring St, New York, NY',
     bookingUrl: 'https://balthazarny.com/',
     cuisine: 'French',
-    description: 'French brasserie — grand SoHo classic for steak frites and people-watching.',
+    description: 'French brasserie: grand SoHo classic for steak frites and people-watching.',
     tags: ['food', 'brunch'],
   },
   {
@@ -604,7 +606,7 @@ const CORE_PLACES: Candidate[] = [
     address: '55 Water St, Brooklyn, NY',
     bookingUrl: 'https://www.timeoutmarket.com/newyork/',
     cuisine: 'Food hall',
-    description: 'Food hall — a dozen local restaurant counters, rooftop seating, skyline views.',
+    description: 'Food hall: a dozen local restaurant counters, rooftop seating, skyline views.',
     tags: ['food'],
   },
   {
@@ -618,7 +620,7 @@ const CORE_PLACES: Candidate[] = [
     lng: -74.0114,
     address: '30 Water St, New York, NY',
     bookingUrl: 'https://www.thedeadrabbit.com/',
-    description: 'Irish pub and cocktail bar — award-winning taproom downstairs, cocktails upstairs.',
+    description: 'Irish pub and cocktail bar: award-winning taproom downstairs, cocktails upstairs.',
     tags: ['bar'],
   },
   // ---- Broader neighborhood coverage + daytime brunch/coffee ---------------
@@ -634,7 +636,7 @@ const CORE_PLACES: Candidate[] = [
     address: '75 9th Ave, New York, NY',
     bookingUrl: 'https://www.chelseamarket.com/',
     cuisine: 'Food hall',
-    description: 'Indoor food market — tacos, lobster rolls, and bakeries in the old Nabisco factory.',
+    description: 'Indoor food market: tacos, lobster rolls, and bakeries in the old Nabisco factory.',
     tags: ['food'],
   },
   {
@@ -649,7 +651,7 @@ const CORE_PLACES: Candidate[] = [
     address: '224 Lafayette St, New York, NY',
     bookingUrl: 'https://jackswifefreda.com/',
     cuisine: 'Mediterranean',
-    description: 'All-day café — Mediterranean comfort food, beloved for brunch shakshuka.',
+    description: 'All-day café: Mediterranean comfort food, beloved for brunch shakshuka.',
     tags: ['food', 'brunch'],
   },
   {
@@ -664,7 +666,7 @@ const CORE_PLACES: Candidate[] = [
     address: '42 Grove St, New York, NY',
     bookingUrl: 'https://ilovebuvette.com/',
     cuisine: 'French',
-    description: 'French café and wine bar — tiny spot for eggs in the morning, wine at night.',
+    description: 'French café and wine bar: tiny spot for eggs in the morning, wine at night.',
     tags: ['food', 'brunch'],
   },
   {
@@ -679,7 +681,7 @@ const CORE_PLACES: Candidate[] = [
     address: '1 Front St, Brooklyn, NY',
     bookingUrl: 'https://grimaldispizzeria.com/',
     cuisine: 'Pizza',
-    description: 'Coal-oven pizzeria — classic whole pies under the Brooklyn Bridge.',
+    description: 'Coal-oven pizzeria: classic whole pies under the Brooklyn Bridge.',
     tags: ['food'],
   },
   {
@@ -694,7 +696,7 @@ const CORE_PLACES: Candidate[] = [
     address: '310 Lenox Ave, New York, NY',
     bookingUrl: 'https://www.redroosterharlem.com/',
     cuisine: 'Southern',
-    description: 'Southern comfort-food restaurant — Harlem dining room with live music downstairs.',
+    description: 'Southern comfort-food restaurant: Harlem dining room with live music downstairs.',
     tags: ['food', 'live music'],
   },
   {
@@ -709,7 +711,7 @@ const CORE_PLACES: Candidate[] = [
     address: '328 Malcolm X Blvd, New York, NY',
     bookingUrl: 'https://www.sylviasrestaurant.com/',
     cuisine: 'Southern',
-    description: 'Soul-food restaurant — Harlem institution since 1962; go for the fried chicken.',
+    description: 'Soul-food restaurant: Harlem institution since 1962; go for the fried chicken.',
     tags: ['food', 'brunch'],
   },
   {
@@ -724,7 +726,7 @@ const CORE_PLACES: Candidate[] = [
     address: '33-07 Ditmars Blvd, Astoria, NY',
     bookingUrl: 'https://www.tavernakyclades.com/',
     cuisine: 'Greek',
-    description: 'Greek seafood taverna — Astoria standby; the grilled octopus earns the wait.',
+    description: 'Greek seafood taverna: Astoria standby; the grilled octopus earns the wait.',
     tags: ['food'],
   },
   {
@@ -738,7 +740,7 @@ const CORE_PLACES: Candidate[] = [
     lng: -73.9146,
     address: '29-19 24th Ave, Astoria, NY',
     bookingUrl: 'https://bohemianhall.com/',
-    description: 'Czech beer garden — long communal tables under the trees, pouring since 1910.',
+    description: 'Czech beer garden: long communal tables under the trees, pouring since 1910.',
     tags: ['bar', 'outdoors'],
   },
   {
@@ -753,7 +755,7 @@ const CORE_PLACES: Candidate[] = [
     address: '261 Moore St, Brooklyn, NY',
     bookingUrl: 'https://www.robertaspizza.com/',
     cuisine: 'Pizza',
-    description: 'Wood-fired pizzeria — the Bushwick pioneer with a tiki backyard.',
+    description: 'Wood-fired pizzeria: the Bushwick pioneer with a tiki backyard.',
     tags: ['food'],
   },
   {
@@ -767,7 +769,7 @@ const CORE_PLACES: Candidate[] = [
     lng: -73.9233,
     address: '2 Wyckoff Ave, Brooklyn, NY',
     bookingUrl: 'https://houseofyes.org/',
-    description: 'Nightclub and performance venue — circus-themed warehouse with aerialists.',
+    description: 'Nightclub and performance venue: circus-themed warehouse with aerialists.',
     tags: ['bar', 'live music'],
   },
   {
@@ -782,7 +784,7 @@ const CORE_PLACES: Candidate[] = [
     address: '60 Greenpoint Ave, Brooklyn, NY',
     bookingUrl: 'https://pauliegee.com/',
     cuisine: 'Pizza',
-    description: 'Wood-fired pizzeria — Greenpoint den famous for the hot-honey Hellboy pie.',
+    description: 'Wood-fired pizzeria: Greenpoint den famous for the hot-honey Hellboy pie.',
     tags: ['food'],
   },
   {
@@ -797,7 +799,7 @@ const CORE_PLACES: Candidate[] = [
     address: '727 Manhattan Ave, Brooklyn, NY',
     bookingUrl: 'https://peterpandonuts.com/',
     cuisine: 'Bakery',
-    description: 'Old-school donut shop — Greenpoint counter classic; get the red velvet early.',
+    description: 'Old-school donut shop: Greenpoint counter classic; get the red velvet early.',
     tags: ['food', 'coffee'],
   },
   {
@@ -811,7 +813,7 @@ const CORE_PLACES: Candidate[] = [
     lng: -73.9852,
     address: '81 E 7th St, New York, NY',
     cuisine: 'Coffee',
-    description: 'Espresso bar — tiny standing-room counter for coffee and olive-oil cake.',
+    description: 'Espresso bar: tiny standing-room counter for coffee and olive-oil cake.',
     tags: ['food', 'coffee'],
   },
   {
@@ -826,7 +828,7 @@ const CORE_PLACES: Candidate[] = [
     address: '141 Waverly Pl, New York, NY',
     bookingUrl: 'https://joecoffeecompany.com/pages/west-village',
     cuisine: 'Coffee',
-    description: 'Neighborhood coffee shop — corner counter on Waverly Place, a Village original since 2003.',
+    description: 'Neighborhood coffee shop: corner counter on Waverly Place, a Village original since 2003.',
     tags: ['food', 'coffee'],
   },
   {
@@ -841,7 +843,7 @@ const CORE_PLACES: Candidate[] = [
     address: '176 Ludlow St, New York, NY',
     bookingUrl: 'https://ludlowcoffeesupply.com/',
     cuisine: 'Coffee',
-    description: 'LES coffee shop — big communal tables and a solid espresso menu on Ludlow St.',
+    description: 'LES coffee shop: big communal tables and a solid espresso menu on Ludlow St.',
     tags: ['food', 'coffee'],
   },
   {
@@ -856,7 +858,7 @@ const CORE_PLACES: Candidate[] = [
     address: '148 Grand St, Brooklyn, NY',
     bookingUrl: 'https://www.devocion.com/',
     cuisine: 'Coffee',
-    description: 'Coffee roastery and café — greenhouse-like space serving Colombian beans roasted on-site.',
+    description: 'Coffee roastery and café: greenhouse-like space serving Colombian beans roasted on-site.',
     tags: ['food', 'coffee'],
   },
 ];

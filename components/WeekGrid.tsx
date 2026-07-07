@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — week calendar grid (components/WeekGrid.tsx)
+// OutNYC: week calendar grid (components/WeekGrid.tsx)
 // =============================================================================
 // The heart of the app: a Mon-Sun hour grid where
 //   - each day column header carries a neighborhood button (tap to pick that
@@ -161,7 +161,7 @@ const FreeBlockEditor = memo(function FreeBlockEditor({
   onDragActive,
 }: {
   date: string;
-  /** Position in the day's windows array — the identity used to commit edits
+  /** Position in the day's windows array: the identity used to commit edits
    *  (matching by start/end breaks when two windows share bounds). */
   index: number;
   window: TimeWindow;
@@ -180,8 +180,8 @@ const FreeBlockEditor = memo(function FreeBlockEditor({
 
   const makeResponder = (edge: DragState['edge']) =>
     PanResponder.create({
-      // Everything claims at touch start — the same timing as the edge handles
-      // and the column painter — so the scroll lock engages before the outer
+      // Everything claims at touch start: the same timing as the edge handles
+      // and the column painter: so the scroll lock engages before the outer
       // ScrollView can steal the gesture. A body touch that never really moves
       // is treated as a tap (select) on release.
       onStartShouldSetPanResponder: () => true,
@@ -266,7 +266,7 @@ const FreeBlockEditor = memo(function FreeBlockEditor({
         accessibilityLabel={`Free ${w.start} to ${w.end}. Drag to move; use the corner button to remove.`}
         style={StyleSheet.absoluteFill}
       />
-      {/* Visible delete — no more hidden long-press. hitSlop widens the 20px
+      {/* Visible delete: no more hidden long-press. hitSlop widens the 20px
           button to a 40px target; the confirm behind onRemove keeps a stray
           corner grab from silently destroying the block. */}
       <Pressable
@@ -404,7 +404,7 @@ const NeighborhoodModal = memo(function NeighborhoodModal({
   const setDayPrefs = useStore((s) => s.setDayPrefs);
   const clearDayPrefs = useStore((s) => s.clearDayPrefs);
   // The modal instance is never unmounted (only `date` toggles), so scope the
-  // warning to the day it was raised on — opening the picker on a different
+  // warning to the day it was raised on: opening the picker on a different
   // day never shows a stale "pick at least one" from a prior day. Closing
   // also clears it, so reopening the picker for the SAME day starts clean
   // instead of resurrecting a warning from the previous visit.
@@ -435,7 +435,7 @@ const NeighborhoodModal = memo(function NeighborhoodModal({
     <Modal visible transparent animationType="fade" onRequestClose={close}>
       {/* No accessibilityRole here: the scrim wraps real interactive buttons
           (chips, Done), and react-native-web renders role="button" as an
-          actual <button> — nesting one inside another is invalid HTML and
+          actual <button>: nesting one inside another is invalid HTML and
           breaks hydration. Tap-to-dismiss still works via onPress alone;
           "Done" below is the clear, accessible way to close for AT users. */}
       <Pressable style={styles.modalScrim} onPress={close}>
@@ -781,7 +781,7 @@ export function WeekGrid({
                     <FreeBlockEditor
                       // Keyed by ARRAY POSITION, not start/end: the index is
                       // already the commit identity, and a start/end key would
-                      // remount the editor on every resize — dumping VoiceOver
+                      // remount the editor on every resize: dumping VoiceOver
                       // focus off the adjustable handle after each increment.
                       key={i}
                       date={d}

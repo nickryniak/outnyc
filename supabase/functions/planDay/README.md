@@ -1,7 +1,7 @@
 # `planDay` Edge Function
 
 The secure, server-side path for **live LLM planning** in OutNYC. It calls the
-Anthropic Messages API using a function secret — the API key never touches the
+Anthropic Messages API using a function secret: the API key never touches the
 app bundle. The model defaults to `claude-sonnet-4-6` and can be overridden
 without a redeploy via the optional `ANTHROPIC_MODEL` secret (see Deploy below).
 
@@ -94,7 +94,7 @@ supabase functions serve planDay --env-file ./supabase/.env.local
 ```
 
 Put `ANTHROPIC_API_KEY=sk-ant-...` in `./supabase/.env.local` for local runs
-(that file is gitignored — never commit a key).
+(that file is gitignored: never commit a key).
 
 ## Security note
 

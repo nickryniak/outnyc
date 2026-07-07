@@ -1,5 +1,5 @@
 // =============================================================================
-// OutNYC — tests for lib/time.ts
+// OutNYC: tests for lib/time.ts
 // =============================================================================
 // Pure date/time math only; no store or provider imports. Dates below are
 // verified America/New_York calendar facts (2026-07-02 is a Thursday).
@@ -104,7 +104,7 @@ describe('applyBlockDrag', () => {
     // 21:30-22:00 block at the very bottom; dragging the bottom up 60min snaps
     // the end to 21:00, under minLen. The naive push (start 21:30 + 60 = 22:30)
     // overshoots the day, so the fixup pulls the whole block back inside:
-    // 21:00-22:00 — full minLen, flush with the day end.
+    // 21:00-22:00: full minLen, flush with the day end.
     const r = applyBlockDrag('bottom', 1290, 1320, -60, DAY_START, DAY_END);
     expect(r.end).toBeLessThanOrEqual(DAY_END);
     expect(r.end - r.start).toBe(60);

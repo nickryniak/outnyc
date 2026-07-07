@@ -1,14 +1,14 @@
 // =============================================================================
-// OutNYC — places provider (lib/providers/placesProvider.ts)
+// OutNYC: places provider (lib/providers/placesProvider.ts)
 // =============================================================================
 // Returns restaurant/bar Candidates. With EXPO_PUBLIC_GOOGLE_PLACES_API_KEY
 // present, hits the Google Places API (New, v1 searchText) per selected
 // neighborhood and maps real ratings (rating/userRatingCount), websites, and
-// editorial summaries into Candidates — so the app shows REAL review scores,
+// editorial summaries into Candidates: so the app shows REAL review scores,
 // never fabricated ones. Without a key, serves curated seed places STRICTLY
 // narrowed to the selected neighborhoods (plus location-agnostic picks); there
 // is no widening, so a venue in an unpicked neighborhood can never leak in.
-// NEVER throws — each neighborhood query fails independently, backfilled by
+// NEVER throws: each neighborhood query fails independently, backfilled by
 // that neighborhood's seed; the wholesale seed fallback only applies when no
 // query produced anything.
 //
@@ -47,7 +47,7 @@ const FIELD_MASK = [
 // swap-intent chips. Checked in a fixed priority order (first match wins), so
 // SPECIFIC types must precede the generic type they nearly always ride along
 // with: real sushi places carry sushi_restaurant AND japanese_restaurant (and
-// pizza places pizza_restaurant AND italian_restaurant) — generic-first would
+// pizza places pizza_restaurant AND italian_restaurant): generic-first would
 // collapse them all to the generic label and starve the specific chips.
 const CUISINE_TYPES: [string, string][] = [
   ['pizza_restaurant', 'Pizza'],
@@ -100,7 +100,7 @@ function gpPriceTier(level: string | undefined): PriceTier | undefined {
   }
 }
 
-/** The Places API v1 fields actually read — compile-time documentation, not runtime validation. */
+/** The Places API v1 fields actually read: compile-time documentation, not runtime validation. */
 interface GooglePlace {
   id?: string;
   displayName?: { text?: string };
@@ -168,7 +168,7 @@ export const placesProvider = {
   },
 
   /**
-   * Fetch places IN the given neighborhoods. Always resolves — never throws.
+   * Fetch places IN the given neighborhoods. Always resolves: never throws.
    * Live results carry real Google ratings and websites; seed fallback stays
    * strictly neighborhood-filtered.
    */
