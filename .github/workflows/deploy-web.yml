@@ -1,13 +1,14 @@
 # Deploys the Expo web build to GitHub Pages on every push to main.
 # The app is fully static (no servers, no keys): planning runs on-device and
 # data lives in the visitor's browser storage, so this stays free and durable.
-# STATUS: manual trigger only for now. `expo export --platform web` currently
-# fails resolving lucide-react-native's per-icon .mjs files (dev server is
-# fine; it is an export-time metro resolution issue). Fix that, verify a local
-# export, then restore the push trigger to go live on every merge.
+# Note: `expo export --platform web` fails inside the Claude Code bash sandbox
+# (Metro's file crawler misses files there); it works in any normal shell and
+# in CI. Verify local exports outside the sandbox.
 name: Deploy web
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
