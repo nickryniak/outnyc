@@ -39,3 +39,4 @@ coverage/
 .idea/
 .vscode/
 *.tsbuildinfo
+dist-pages/
