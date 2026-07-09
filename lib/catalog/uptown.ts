@@ -174,6 +174,7 @@ export const UPTOWN_PLACES: Candidate[] = [
     address: 'Pier 66, W 26th St & Hudson River Park, New York, NY 10011',
     description: 'Boat bar: sunset drinks on a rescued lightship moored at Pier 66 (seasonal).',
     tags: ['bar', 'outdoors'],
+    months: [4, 5, 6, 7, 8, 9, 10],
   },
 
   // ---------- Midtown ----------
@@ -1183,7 +1184,7 @@ export const UPTOWN_EVENTS: Candidate[] = [
   },
   {
     id: 'up-roosevelt-island-tram',
-    name: 'Roosevelt Island Tramway Ride',
+    name: 'Tramway ride at Roosevelt Island',
     kind: 'activity',
     neighborhood: 'Upper East Side',
     priceTier: 1,
@@ -1423,6 +1424,7 @@ export const UPTOWN_EVENTS: Candidate[] = [
     bookingUrl: 'https://www.fcbcnyc.org',
     description: 'Gospel service: soaring Sunday worship inside a former 1913 movie palace.',
     tags: ['live music'],
+    daysOfWeek: [0],
   },
   {
     id: 'up-mintons-playhouse',

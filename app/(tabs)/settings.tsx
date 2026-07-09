@@ -14,8 +14,10 @@ import {
   Button,
   Caption,
   Card,
+  ErrorView,
   Heading,
   LoadingView,
+  PersistenceBanner,
 } from '../../components/ui';
 import { providerFlags } from '../../lib/config';
 import { confirmDestructive } from '../../lib/confirm';
@@ -91,12 +93,10 @@ export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const loadStatus = useStore((s) => s.loadStatus);
+  const loadError = useStore((s) => s.loadError);
+  const bootstrap = useStore((s) => s.bootstrap);
   const profile = useStore((s) => s.profile);
   const resetApp = useStore((s) => s.resetApp);
-
-  if (loadStatus !== 'ready' || !profile) {
-    return <LoadingView label="Loading settings…" />;
-  }
 
   function onReset() {
     confirmDestructive(
@@ -112,6 +112,26 @@ export default function SettingsScreen() {
     );
   }
 
+  // A failed load must not spin forever here: Settings holds "Start fresh",
+  // the one control that can rescue corrupt or full storage, so it stays
+  // reachable alongside the retry.
+  if (loadStatus === 'error') {
+    return (
+      <View style={styles.errorWrap}>
+        <ErrorView
+          message={loadError ?? 'We could not load your settings.'}
+          onRetry={() => void bootstrap()}
+        />
+        <View style={styles.errorAction}>
+          <Button label="Start fresh" variant="ghost" onPress={onReset} />
+        </View>
+      </View>
+    );
+  }
+  if (loadStatus !== 'ready' || !profile) {
+    return <LoadingView label="Loading settings…" />;
+  }
+
   return (
     <ScrollView
       style={styles.container}
@@ -120,6 +140,7 @@ export default function SettingsScreen() {
         { paddingBottom: insets.bottom + spacing.xxl },
       ]}
     >
+      <PersistenceBanner />
       <Card>
         <Heading>Your usual preferences</Heading>
         <Caption muted>
@@ -199,6 +220,14 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.md,
+  },
+  errorWrap: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  errorAction: {
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xxl,
   },
   spaced: {
     marginTop: spacing.sm,

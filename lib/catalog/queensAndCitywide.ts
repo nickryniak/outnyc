@@ -543,7 +543,7 @@ export const QUEENS_CITYWIDE_EVENTS: Candidate[] = [
   },
   {
     id: 'qc-roosevelt-island-tram-loop',
-    name: 'Roosevelt Island Tram + Lighthouse Loop',
+    name: 'Lighthouse loop at Roosevelt Island',
     kind: 'activity',
     priceTier: 1,
     durationMin: 150,
@@ -565,6 +565,7 @@ export const QUEENS_CITYWIDE_EVENTS: Candidate[] = [
     address: 'Beach 97th St & Shore Front Pkwy, Rockaway Park, NY 11694',
     description: 'Beach day: A-train surf beach with boardwalk tacos at the 97th St concessions.',
     tags: ['outdoors'],
+    months: [6, 7, 8, 9], // A-train beach season
   },
   {
     id: 'qc-hudson-greenway-bike',
@@ -615,6 +616,7 @@ export const QUEENS_CITYWIDE_EVENTS: Candidate[] = [
     bookingUrl: 'https://downtownboathouse.org',
     description: 'Free kayaking: volunteer-run walk-up paddling in a protected Hudson embayment.',
     tags: ['outdoors'],
+    months: [5, 6, 7, 8, 9, 10], // free kayaking runs mid-May to mid-Oct
   },
   {
     id: 'qc-chelsea-piers-driving-range',
@@ -686,6 +688,7 @@ export const QUEENS_CITYWIDE_EVENTS: Candidate[] = [
     bookingUrl: 'https://socratessculpturepark.org',
     description: 'Outdoor movie: free summer film under the skyline in the sculpture park; bring a blanket.',
     tags: ['film', 'outdoors'],
+    months: [7, 8], // free outdoor film series is a summer program
   },
   // --- Fixed-time events: stadium nights (floating) ---
   {
@@ -701,6 +704,7 @@ export const QUEENS_CITYWIDE_EVENTS: Candidate[] = [
     bookingUrl: 'https://www.mlb.com/mets',
     description: 'Ballgame: night baseball at Citi Field with a Shake Shack stop behind center field.',
     tags: ['outdoors'],
+    months: [4, 5, 6, 7, 8, 9], // MLB regular season
   },
   {
     id: 'qc-yankees-game-night',
@@ -715,5 +719,6 @@ export const QUEENS_CITYWIDE_EVENTS: Candidate[] = [
     bookingUrl: 'https://www.mlb.com/yankees',
     description: 'Ballgame: a Bronx night game under the lights in the cathedral of baseball.',
     tags: ['outdoors'],
+    months: [4, 5, 6, 7, 8, 9], // MLB regular season
   },
 ];

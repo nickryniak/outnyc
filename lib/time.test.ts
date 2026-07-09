@@ -6,11 +6,18 @@
 // =============================================================================
 
 import {
+  addDays,
   applyBlockDrag,
+  dayOfWeekNY,
   fromMinutes,
+  isValidYmd,
   mondayOf,
+  monthDayLabel,
+  msUntilNextNYMidnight,
   toMinutes,
+  weekDates,
   weekdayInitial,
+  weekdayLabel,
 } from './time';
 
 describe('toMinutes / fromMinutes', () => {
@@ -128,5 +135,82 @@ describe('applyBlockDrag', () => {
     // 10:00-11:30 moved +100min: start 11:40 snaps to 12:00, length preserved.
     const r = applyBlockDrag('move', 600, 690, 100, DAY_START, DAY_END);
     expect(r).toEqual({ start: 720, end: 810 });
+  });
+});
+
+// =============================================================================
+// Decade-proofing: invalid input, DST, and NY-vs-device-clock (2026-07 audit).
+// =============================================================================
+
+describe('isValidYmd', () => {
+  it('accepts real calendar dates', () => {
+    expect(isValidYmd('2026-07-09')).toBe(true);
+    expect(isValidYmd('2028-02-29')).toBe(true); // leap day
+  });
+
+  it('rejects malformed and impossible dates instead of rolling them over', () => {
+    for (const bad of ['abc', 'tonight', '', '2026-13-01', '2026-02-31', '2026-7-9', '2026-00-10']) {
+      expect(isValidYmd(bad)).toBe(false);
+    }
+    expect(isValidYmd('2027-02-29')).toBe(false); // 2027 is not a leap year
+  });
+});
+
+describe('label helpers never throw on bad input', () => {
+  it('echoes an unparseable date back instead of raising RangeError', () => {
+    expect(() => weekdayLabel('tonight')).not.toThrow();
+    expect(weekdayLabel('tonight')).toBe('tonight');
+    expect(monthDayLabel('abc')).toBe('abc');
+    expect(addDays('abc', 3)).toBe('abc');
+  });
+});
+
+describe('addDays across DST and year boundaries', () => {
+  it('crosses spring forward (23-hour day) without skipping a date', () => {
+    expect(addDays('2026-03-07', 1)).toBe('2026-03-08');
+    expect(addDays('2026-03-08', 1)).toBe('2026-03-09');
+  });
+
+  it('crosses fall back (25-hour day) without repeating a date', () => {
+    expect(addDays('2026-10-31', 1)).toBe('2026-11-01');
+    expect(addDays('2026-11-01', 1)).toBe('2026-11-02');
+  });
+
+  it('crosses a year boundary and a leap day', () => {
+    expect(addDays('2026-12-31', 1)).toBe('2027-01-01');
+    expect(addDays('2028-02-28', 1)).toBe('2028-02-29');
+    expect(addDays('2028-02-29', 1)).toBe('2028-03-01');
+  });
+});
+
+describe('week helpers span a year boundary', () => {
+  it('builds a Mon-Sun week that crosses into the next year', () => {
+    // Mon Dec 27 2027 .. Sun Jan 2 2028
+    expect(mondayOf('2027-12-31')).toBe('2027-12-27');
+    expect(weekDates('2027-12-27')).toEqual([
+      '2027-12-27',
+      '2027-12-28',
+      '2027-12-29',
+      '2027-12-30',
+      '2027-12-31',
+      '2028-01-01',
+      '2028-01-02',
+    ]);
+  });
+});
+
+describe('dayOfWeekNY', () => {
+  it('reports the NY weekday regardless of the device timezone', () => {
+    expect(dayOfWeekNY('2026-07-12')).toBe(0); // Sunday
+    expect(dayOfWeekNY('2026-07-13')).toBe(1); // Monday
+    expect(dayOfWeekNY('2026-07-18')).toBe(6); // Saturday
+  });
+});
+
+describe('msUntilNextNYMidnight', () => {
+  it('is a positive duration no longer than a 25-hour DST day', () => {
+    const ms = msUntilNextNYMidnight();
+    expect(ms).toBeGreaterThan(0);
+    expect(ms).toBeLessThanOrEqual(25 * 60 * 60 * 1000);
   });
 });

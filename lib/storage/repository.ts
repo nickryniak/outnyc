@@ -51,4 +51,11 @@ export interface Repository {
   // ---- maintenance ----
   /** Wipe all OutNYC data (used by "reset app" in Settings). */
   clearAll(): Promise<void>;
+  /**
+   * Delete per-date rows (availability, plans, day prefs) dated before the
+   * cutoff ('YYYY-MM-DD'). Run at bootstrap so storage stays bounded no matter
+   * how many years the app is used; without this, web localStorage (~5MB)
+   * eventually fills and every write starts failing.
+   */
+  pruneBefore(cutoffDate: string): Promise<void>;
 }

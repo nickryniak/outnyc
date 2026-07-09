@@ -23,6 +23,7 @@ import { filterToNeighborhoods } from '../planner/slotUtils';
 import type { Candidate, PriceTier, ProviderInfo } from '../types';
 import type { ProviderResult } from './eventsProvider';
 import { fetchJson } from './net';
+import { filterToDate } from './seasonality';
 
 const PLACES_URL = 'https://places.googleapis.com/v1/places:searchText';
 // One searchText call per neighborhood; bounded so a many-neighborhood day
@@ -171,9 +172,12 @@ export const placesProvider = {
    * Fetch places IN the given neighborhoods. Always resolves: never throws.
    * Live results carry real Google ratings and websites; seed fallback stays
    * strictly neighborhood-filtered.
+   * `date` gates seasonal venues (a Hudson River boat bar is not open in
+   * January); omit it only where no date is in scope.
    */
-  async fetchPlaces(neighborhoods: string[]): Promise<ProviderResult> {
-    const localSeed = filterToNeighborhoods(SEED_PLACES, neighborhoods);
+  async fetchPlaces(neighborhoods: string[], date?: string): Promise<ProviderResult> {
+    const inSeason = date ? filterToDate(SEED_PLACES, date) : SEED_PLACES;
+    const localSeed = filterToNeighborhoods(inSeason, neighborhoods);
     if (!providerFlags.places.isLive) {
       return { candidates: localSeed, live: false };
     }

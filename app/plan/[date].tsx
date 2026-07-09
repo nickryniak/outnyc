@@ -5,12 +5,13 @@
 // numbered itinerary. Reshuffle and swap live on the calendar screen, not here.
 // =============================================================================
 
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { PlanItemCard } from '../../components/PlanItemCard';
 import {
+  Button,
   Caption,
   EmptyView,
   ErrorView,
@@ -18,7 +19,7 @@ import {
 } from '../../components/ui';
 import { planKey, useStore } from '../../lib/store';
 import { colors, font, radius, spacing } from '../../lib/theme';
-import { format12h, formatWindow, relativeDayLabel } from '../../lib/time';
+import { format12h, formatWindow, isValidYmd, relativeDayLabel } from '../../lib/time';
 import type { Plan, PriceTier, TimeWindow } from '../../lib/types';
 
 /** A one-line summary: stop count · span · price range. */
@@ -36,15 +37,40 @@ function planSummary(plan: Plan): string {
   return `${stops.length} ${plural}  ·  ${format12h(first.startTime)}–${format12h(last.endTime)}${priceText}`;
 }
 
+/**
+ * "Back to your week" for a screen with no back stack. A home-screen web app
+ * bookmarked on this route (Add to Home Screen while viewing a plan) launches
+ * straight here every time, with no browser chrome and no synthesized history:
+ * without this the day plan is a dead end.
+ */
+function BackToWeek() {
+  const router = useRouter();
+  if (router.canGoBack()) return null;
+  return <Button label="Back to your week" variant="secondary" onPress={() => router.replace('/week')} />;
+}
+
 export default function PlanScreen() {
   const params = useLocalSearchParams<{ date: string }>();
-  const date = typeof params.date === 'string' ? params.date : '';
+  const raw = typeof params.date === 'string' ? params.date : '';
+  // The static web export serves this route for ANY path segment, so the param
+  // is untrusted input: a truncated bookmark or mistyped URL must land on the
+  // empty state, never in Intl's date formatter (which throws a RangeError on
+  // an invalid date and takes the whole screen down).
+  const date = isValidYmd(raw) ? raw : '';
 
   const loadStatus = useStore((s) => s.loadStatus);
   const availability = useStore((s) => (date ? s.availabilityByDate[date] : undefined));
 
   if (loadStatus !== 'ready') return <LoadingView label="Loading…" />;
-  if (!date) return <EmptyView title="Unknown day" message="No date was provided." />;
+  if (!date) {
+    return (
+      <EmptyView
+        title="Unknown day"
+        message={raw ? `“${raw}” is not a date we recognize.` : 'No date was provided.'}
+        action={<BackToWeek />}
+      />
+    );
+  }
 
   const windows = availability?.windows ?? [];
   if (windows.length === 0) {
@@ -52,6 +78,7 @@ export default function PlanScreen() {
       <EmptyView
         title="No free time set"
         message={`Add a free-time window for ${relativeDayLabel(date)} first, then come back to plan it.`}
+        action={<BackToWeek />}
       />
     );
   }
@@ -62,6 +89,7 @@ export default function PlanScreen() {
         <WindowPlan key={`${w.start}-${w.end}`} date={date} window={w} />
       ))}
       <Caption muted>To change a plan, use Reshuffle or Swap on the calendar.</Caption>
+      <BackToWeek />
     </ScrollView>
   );
 }

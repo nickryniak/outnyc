@@ -29,6 +29,13 @@ const monthDayFormatter = new Intl.DateTimeFormat('en-US', {
   day: 'numeric',
 });
 
+const nyClockFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: TZ,
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
 /** Today's date in America/New_York as 'YYYY-MM-DD'. */
 export function todayNY(): string {
   // en-CA renders as YYYY-MM-DD.
@@ -36,18 +43,45 @@ export function todayNY(): string {
 }
 
 /**
+ * True if `ymd` is a real 'YYYY-MM-DD' calendar date. Round-trips through the
+ * anchor so '2026-02-31' and '2026-13-01' are rejected, not silently rolled
+ * over. Route any date that came from OUTSIDE the app (a URL param, stored
+ * data, a shared link) through this before formatting it: Intl throws a
+ * RangeError on an Invalid Date, which would take down the whole screen.
+ */
+export function isValidYmd(ymd: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
+  const anchor = ymdToAnchorDate(ymd);
+  if (Number.isNaN(anchor.getTime())) return false;
+  return ymdFormatter.format(anchor) === ymd;
+}
+
+/**
  * Parse a 'YYYY-MM-DD' string into a UTC-noon Date. We anchor at noon UTC so
  * that formatting back into NY local never crosses a day boundary regardless of
  * DST offset (NY is UTC-4/-5, so noon UTC is always the same calendar day in NY).
+ * A malformed string yields an Invalid Date; callers that may see untrusted
+ * input guard with isValidYmd first.
  */
 function ymdToAnchorDate(ymd: string): Date {
-  const [y = 0, m = 1, d = 1] = ymd.split('-').map((n) => parseInt(n, 10));
+  const [y, m, d] = ymd.split('-').map((n) => parseInt(n, 10));
+  if (y == null || m == null || d == null || Number.isNaN(y) || Number.isNaN(m) || Number.isNaN(d)) {
+    return new Date(NaN);
+  }
   return new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+}
+
+/** Format via Intl, but never throw on an unparseable date: echo it back. */
+function safeFormat(fmt: Intl.DateTimeFormat, ymd: string): string {
+  const anchor = ymdToAnchorDate(ymd);
+  if (Number.isNaN(anchor.getTime())) return ymd;
+  return fmt.format(anchor);
 }
 
 /** Add `days` to a 'YYYY-MM-DD' date and return a 'YYYY-MM-DD' string. */
 export function addDays(ymd: string, days: number): string {
   const anchor = ymdToAnchorDate(ymd);
+  if (Number.isNaN(anchor.getTime())) return ymd;
   anchor.setUTCDate(anchor.getUTCDate() + days);
   return ymdFormatter.format(anchor);
 }
@@ -64,12 +98,12 @@ export function nextDaysNY(count = 7): string[] {
 
 /** Short weekday label, e.g. 'Mon'. */
 export function weekdayLabel(ymd: string): string {
-  return weekdayFormatter.format(ymdToAnchorDate(ymd));
+  return safeFormat(weekdayFormatter, ymd);
 }
 
 /** Short month/day label, e.g. 'Jun 30'. */
 export function monthDayLabel(ymd: string): string {
-  return monthDayFormatter.format(ymdToAnchorDate(ymd));
+  return safeFormat(monthDayFormatter, ymd);
 }
 
 /** A friendly relative label: 'Today', 'Tomorrow', else weekday. */
@@ -113,6 +147,36 @@ export function weekdayInitial(ymd: string): string {
 /** Day of month (1..31) for a 'YYYY-MM-DD' date. */
 export function dayOfMonth(ymd: string): number {
   return ymdToAnchorDate(ymd).getUTCDate();
+}
+
+/** Day of week in NY for a 'YYYY-MM-DD' date: 0=Sun .. 6=Sat. */
+export function dayOfWeekNY(ymd: string): number {
+  return ymdToAnchorDate(ymd).getUTCDay();
+}
+
+/** Month (1..12) for a 'YYYY-MM-DD' date. */
+export function monthOf(ymd: string): number {
+  const [, m] = ymd.split('-').map((n) => parseInt(n, 10));
+  return m ?? 0;
+}
+
+/** Minutes since midnight of the CURRENT America/New_York wall clock. */
+export function nowMinutesNY(): number {
+  const parts = nyClockFormatter.formatToParts(new Date());
+  const get = (t: string) => parseInt(parts.find((p) => p.type === t)?.value ?? '0', 10);
+  const hour = get('hour') % 24; // some engines emit '24' for midnight
+  return hour * 60 + get('minute');
+}
+
+/**
+ * Milliseconds until the next America/New_York midnight. DST-safe: it is
+ * derived from the true NY instant of tomorrow's 00:00, so the 23-hour and
+ * 25-hour days land on the real boundary rather than a fixed 24h offset.
+ * Used to re-arm the day-rollover timer while the app stays open.
+ */
+export function msUntilNextNYMidnight(): number {
+  const nextMidnight = nyDateTimeToLocalDate(addDays(todayNY(), 1), '00:00').getTime();
+  return Math.max(1000, nextMidnight - Date.now());
 }
 
 // ---- 'HH:MM' helpers --------------------------------------------------------

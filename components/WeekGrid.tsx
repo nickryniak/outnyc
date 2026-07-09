@@ -22,10 +22,12 @@ import {
   Modal,
   PanResponder,
   PanResponderGestureState,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
+  type ViewStyle,
 } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -63,6 +65,18 @@ const BLOCK_TITLE_MIN_PX = HOUR_PX / 2 + 4;
 const MAX_FONT_SCALE = 1.4;
 // VoiceOver stand-ins for the drag gestures: increment/decrement on the
 // resize handles, and coarse day-part ranges for painting free time.
+/**
+ * Every surface the user drags on (paint a range, move or resize a block).
+ * Mobile Safari decides at touchstart whether a vertical pan belongs to the
+ * page scroller, and by the time our PanResponder disables the ScrollView the
+ * browser has already committed to scrolling: the block never moves. CSS
+ * `touch-action: none` is the only way to cede the gesture up front. It is a
+ * web-only style (react-native-web passes it through to CSS), so native gets
+ * undefined and keeps using the responder system as before.
+ */
+const GESTURE_SURFACE: ViewStyle | undefined =
+  Platform.OS === 'web' ? ({ touchAction: 'none' } as unknown as ViewStyle) : undefined;
+
 const ADJUST_ACTIONS = [{ name: 'increment' }, { name: 'decrement' }] as const;
 const COLUMN_A11Y_ACTIONS = [
   { name: 'add-morning', label: 'Add morning free time' },
@@ -264,7 +278,7 @@ const FreeBlockEditor = memo(function FreeBlockEditor({
         {...movePan.panHandlers}
         accessibilityRole="button"
         accessibilityLabel={`Free ${w.start} to ${w.end}. Drag to move; use the corner button to remove.`}
-        style={StyleSheet.absoluteFill}
+        style={[StyleSheet.absoluteFill, GESTURE_SURFACE]}
       />
       {/* Visible delete: no more hidden long-press. hitSlop widens the 20px
           button to a 40px target; the confirm behind onRemove keeps a stray
@@ -288,7 +302,7 @@ const FreeBlockEditor = memo(function FreeBlockEditor({
         onAccessibilityAction={(e: AccessibilityActionEvent) =>
           nudgeEdge('top', e.nativeEvent.actionName === 'increment' ? 60 : -60)
         }
-        style={[styles.handle, styles.handleTop]}
+        style={[styles.handle, styles.handleTop, GESTURE_SURFACE]}
       >
         <View style={styles.handleBar} />
       </View>
@@ -302,7 +316,7 @@ const FreeBlockEditor = memo(function FreeBlockEditor({
         onAccessibilityAction={(e: AccessibilityActionEvent) =>
           nudgeEdge('bottom', e.nativeEvent.actionName === 'increment' ? 60 : -60)
         }
-        style={[styles.handle, styles.handleBottom]}
+        style={[styles.handle, styles.handleBottom, GESTURE_SURFACE]}
       >
         <View style={styles.handleBar} />
       </View>
@@ -377,7 +391,7 @@ const ColumnSurface = memo(function ColumnSurface({
         const range = DAY_PART_HOURS[e.nativeEvent.actionName];
         if (range) live.current.onPaintRange(live.current.date, range[0], range[1]);
       }}
-      style={StyleSheet.absoluteFill}
+      style={[StyleSheet.absoluteFill, GESTURE_SURFACE]}
       {...pan.panHandlers}
     >
       {preview ? (

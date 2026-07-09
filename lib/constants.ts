@@ -67,7 +67,7 @@ export const SEED_PROFILE: Profile = {
 export const BUCKET_SEED: BucketItem[] = [
   {
     id: 'seed-bucket-0',
-    title: 'Catch sunset on the High Line',
+    title: 'Sunset at the High Line',
     note: 'An elevated park built on an old freight rail line, 30 feet above the west side streets. Enter at Gansevoort St and walk the planted mile and a half north as the sun drops over the Hudson.',
     neighborhood: 'Chelsea',
     priceTier: 1,
@@ -228,7 +228,7 @@ const CORE_EVENTS: Candidate[] = [
   },
   {
     id: 'evt-highline-art',
-    name: 'High Line Art Walk',
+    name: 'Art walk at the High Line',
     kind: 'activity',
     neighborhood: 'Chelsea',
     priceTier: 1,
@@ -260,7 +260,7 @@ const CORE_EVENTS: Candidate[] = [
   // (The Whitney lives in lib/catalog/downtown.ts as dt-whitney-museum.)
   {
     id: 'act-highline-day',
-    name: 'Walk the High Line',
+    name: 'Elevated park walk at the High Line',
     kind: 'activity',
     neighborhood: 'Chelsea',
     priceTier: 1,
@@ -358,7 +358,7 @@ const CORE_EVENTS: Candidate[] = [
   },
   {
     id: 'act-battery-ferry',
-    name: 'Staten Island Ferry and Battery Park',
+    name: 'Staten Island Ferry Ride',
     kind: 'activity',
     neighborhood: 'Financial District',
     priceTier: 1,
@@ -427,6 +427,7 @@ const CORE_EVENTS: Candidate[] = [
     bookingUrl: 'https://brooklynflea.com/',
     description: 'Outdoor flea market: weekend vintage, records, and local makers under the arches.',
     tags: ['outdoors', 'walk'],
+    daysOfWeek: [0, 6],
   },
 ];
 
@@ -608,20 +609,6 @@ const CORE_PLACES: Candidate[] = [
     cuisine: 'Food hall',
     description: 'Food hall: a dozen local restaurant counters, rooftop seating, skyline views.',
     tags: ['food'],
-  },
-  {
-    id: 'plc-dead-rabbit',
-    name: 'The Dead Rabbit',
-    kind: 'bar',
-    neighborhood: 'Financial District',
-    priceTier: 3,
-    durationMin: 75,
-    lat: 40.7033,
-    lng: -74.0114,
-    address: '30 Water St, New York, NY',
-    bookingUrl: 'https://www.thedeadrabbit.com/',
-    description: 'Irish pub and cocktail bar: award-winning taproom downstairs, cocktails upstairs.',
-    tags: ['bar'],
   },
   // ---- Broader neighborhood coverage + daytime brunch/coffee ---------------
   {

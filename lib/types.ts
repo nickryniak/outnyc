@@ -180,6 +180,19 @@ export interface Candidate {
    * compared to dropping a real paid ticket.
    */
   soft?: boolean;
+  /**
+   * Calendar months (1-12) this candidate actually operates in. Absent means
+   * year-round. Seasonal venues (a summer beach, a boat bar that winters in
+   * dry dock, a baseball game) set this so the app never plans a January
+   * kayak trip. Enforced in the providers, before the pool is built.
+   */
+  months?: number[];
+  /**
+   * Days of week (0=Sun .. 6=Sat) this candidate happens on. Absent means any
+   * day. Set on things that only exist on one day: Sunday gospel service, a
+   * weekend flea market, a jazz brunch.
+   */
+  daysOfWeek?: number[];
 }
 
 /**

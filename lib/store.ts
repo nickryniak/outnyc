@@ -23,7 +23,7 @@
 import { create } from 'zustand';
 
 import { isListHeader, parseBucketText } from './bucketParse';
-import { BUCKET_SEED, NEIGHBORHOODS, SEED_PROFILE } from './constants';
+import { BUCKET_SEED, NEIGHBORHOODS, SEED_PROFILE, STORAGE_PREFIX } from './constants';
 import { holidayFor } from './holidays';
 import { defaultPlanner } from './planner';
 import { scoreCandidate, type ScoringContext } from './planner/scoring';
@@ -38,7 +38,7 @@ import {
   venueKey,
 } from './planner/slotUtils';
 import { eventsProvider, placesProvider } from './providers';
-import { repository } from './storage';
+import { onPersistenceError, repository } from './storage';
 import { addDays, fromMinutes, isValidWindow, mondayOf, todayNY, toMinutes, weekDates } from './time';
 import type {
   Availability,
@@ -181,6 +181,12 @@ interface StoreState {
   // ---- transient ----
   planning: Record<string, PlanningState>; // keyed like plansByKey
   /**
+   * True once any storage write has failed (quota exceeded, storage blocked):
+   * in-memory state is still correct, but changes will NOT survive a reload,
+   * so the UI warns instead of letting the user find out tomorrow.
+   */
+  persistenceBroken: boolean;
+  /**
    * Per-date note from the events provider's last fetch for that date:
    * 'live-no-area-matches' means the ticketed live sources answered fine but
    * had zero in-area events, so curated seed events were substituted: the UI
@@ -256,8 +262,19 @@ const nonceByKey: Record<string, number> = {};
  * per-date queue existed for.
  */
 let planQueue: Promise<void> = Promise.resolve();
+
+/**
+ * Epoch stamp for queued plan work. resetApp bumps it, which makes every
+ * already-queued (or in-flight) plan task a no-op at its commit points:
+ * without this, work chained onto the OLD planQueue promise would still run
+ * after the wipe and write pre-reset windows/plans back to disk.
+ */
+let storeEpoch = 0;
+
 function enqueuePlan(_date: string, work: () => Promise<void>): Promise<void> {
-  const next = planQueue.then(work, work);
+  const epoch = storeEpoch;
+  const run = () => (epoch === storeEpoch ? work() : Promise.resolve());
+  const next = planQueue.then(run, run);
   planQueue = next.catch(() => undefined);
   return next;
 }
@@ -308,6 +325,12 @@ function planCandidateKeys(plan: Plan): string[] {
  * list on first run. Shared by bootstrap() and resetApp().
  */
 async function loadAllInto(set: SetFn): Promise<void> {
+  // Bound storage growth FIRST: retire per-date rows older than last week so
+  // years of use can never fill web localStorage (~5MB) and break every
+  // write. Last week is kept so recently passed days remain inspectable.
+  const weekStart = mondayOf(todayNY());
+  await repository.pruneBefore(addDays(weekStart, -7));
+
   let profile = await repository.getProfile();
   let bucketList = await repository.getBucketList();
 
@@ -340,12 +363,18 @@ async function loadAllInto(set: SetFn): Promise<void> {
   // outside a green window.
   const plans = await repository.getAllPlans();
   const plansByKey: Record<string, Plan> = {};
+  // An EMPTY availability read can mean "corrupt/lost key" as easily as "no
+  // windows anywhere"; treating every plan as an orphan on that signal would
+  // erase the user's entire itinerary history from disk. Only heal orphans
+  // away when some availability positively read back; unmatched plans are
+  // invisible anyway, and pruneBefore retires them once their date passes.
+  const canHealOrphans = availabilityList.length > 0;
   for (const p of plans) {
     const windows = availabilityByDate[p.date]?.windows ?? [];
     const stillValid = windows.some((w) => planKey(p.date, w) === planKey(p.date, p.window));
     if (stillValid) {
       plansByKey[planKey(p.date, p.window)] = p;
-    } else {
+    } else if (canHealOrphans) {
       await repository.deletePlan(p.id);
     }
   }
@@ -358,14 +387,14 @@ async function loadAllInto(set: SetFn): Promise<void> {
   // week), so keep the CURRENT week's history: including days already past:
   // and prune anything from previous weeks so it cannot grow without bound.
   const seenByDate = await repository.getSeenMap();
-  const weekStart = mondayOf(todayNY());
-  // Far-future entries can only be typo'd/garbage dates (nothing is planned
-  // 8+ weeks out); without a forward bound they would survive the past-week
-  // prune forever.
+  // Far-future entries with no matching windows can only be typo'd/garbage
+  // dates; without a forward bound they would survive the past-week prune
+  // forever. Dates that still hold real availability (a trip planned 9+
+  // weeks out) keep their never-repeat memory no matter how far ahead.
   const futureLimit = addDays(weekStart, 8 * 7);
   let seenPruned = false;
   for (const date of Object.keys(seenByDate)) {
-    if (date < weekStart || date > futureLimit) {
+    if (date < weekStart || (date > futureLimit && !availabilityByDate[date])) {
       delete seenByDate[date];
       seenPruned = true;
     }
@@ -396,7 +425,11 @@ function healBucketList(items: BucketItem[]): BucketItem[] | null {
   let changed = false;
   const seedById = new Map(BUCKET_SEED.map((b) => [b.id, b]));
   const out: BucketItem[] = [];
-  for (const item of [...items].sort((a, b) => a.sortOrder - b.sortOrder)) {
+  // The repository already drops non-conforming rows, but this pass is the
+  // last line before `.sort()` and `.title.match()` touch stored data: an
+  // array is guaranteed here, and every survivor has a string title.
+  const safe = Array.isArray(items) ? items.filter((i) => typeof i?.title === 'string') : [];
+  for (const item of [...safe].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))) {
     const seed = seedById.get(item.id);
     if (seed && (seed.title !== item.title || seed.note !== item.note)) {
       out.push({ ...seed, done: item.done, sortOrder: out.length });
@@ -449,6 +482,7 @@ export const useStore = create<StoreState>((set, get) => ({
   dayPrefsByDate: {},
   seenByDate: {},
   planning: {},
+  persistenceBroken: false,
   eventsNoteByDate: {},
 
   async bootstrap() {
@@ -471,6 +505,10 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   async resetApp() {
+    // Invalidate every queued/in-flight plan task FIRST: work already chained
+    // onto the old planQueue would otherwise run after the wipe and write the
+    // just-erased windows and plans straight back to disk.
+    storeEpoch += 1;
     // Wipe disk, then reload (which re-seeds).
     await repository.clearAll();
     // Module-level mutable state resets too, or a "fresh" app would inherit
@@ -486,6 +524,7 @@ export const useStore = create<StoreState>((set, get) => ({
       dayPrefsByDate: {},
       seenByDate: {},
       planning: {},
+      persistenceBroken: false,
       eventsNoteByDate: {},
       loadStatus: 'loading',
       loadError: undefined,
@@ -836,6 +875,43 @@ export const useStore = create<StoreState>((set, get) => ({
 
 }));
 
+// A failed WRITE (storage full, storage blocked in Safari) leaves memory and
+// disk divergent: the app looks fine until the next launch, when the user's
+// evening is gone. Flip a flag the screens surface as a banner instead.
+onPersistenceError(() => {
+  if (!useStore.getState().persistenceBroken) {
+    useStore.setState({ persistenceBroken: true });
+  }
+});
+
+/**
+ * Web only: AsyncStorage is localStorage, which every tab of the app shares.
+ * The `storage` event fires in the OTHER tabs when one of them writes, so a
+ * second tab re-reads instead of continuing from a snapshot it took at load
+ * and later overwriting the first tab's bucket list or never-repeat memory
+ * with its own stale copy. Coalesced: a burst of writes triggers one reload.
+ */
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  let queued = false;
+  window.addEventListener('storage', (event: StorageEvent) => {
+    if (event.key != null && !event.key.startsWith(STORAGE_PREFIX)) return;
+    if (queued || useStore.getState().loadStatus !== 'ready') return;
+    queued = true;
+    setTimeout(() => {
+      queued = false;
+      // Reload behind the plan queue so an in-flight plan commit is not
+      // interleaved with a whole-state replacement.
+      void enqueuePlan('*', async () => {
+        try {
+          await loadAllInto(useStore.setState);
+        } catch {
+          // A failed refresh leaves this tab on its (still usable) snapshot.
+        }
+      });
+    }, 250);
+  });
+}
+
 /**
  * Persist an availability change, prune plans whose window no longer exists
  * (resized/removed blocks), and AUTO-PLAN every window that has no plan yet:
@@ -1054,7 +1130,7 @@ async function slotCandidates(
   try {
     const [eventsRes, placesRes] = await Promise.all([
       eventsProvider.fetchEvents(date),
-      placesProvider.fetchPlaces(prefs.neighborhoods),
+      placesProvider.fetchPlaces(prefs.neighborhoods, date),
     ]);
     fetched = [...eventsRes.candidates, ...placesRes.candidates];
   } catch {
@@ -1203,6 +1279,7 @@ async function runPlan(
   modifier: PlanModifier | undefined,
 ): Promise<void> {
   const key = planKey(date, window);
+  const epoch = storeEpoch;
   const profile = get().profile;
   if (!profile) return;
   const prefs = resolvePrefs(profile, get().dayPrefsByDate[date]);
@@ -1212,7 +1289,7 @@ async function runPlan(
   try {
     const [eventsRes, placesRes] = await Promise.all([
       eventsProvider.fetchEvents(date),
-      placesProvider.fetchPlaces(prefs.neighborhoods),
+      placesProvider.fetchPlaces(prefs.neighborhoods, date),
     ]);
 
     // Record (or clear) the provider's "live answered, nothing in-area" note
@@ -1269,12 +1346,12 @@ async function runPlan(
     }
 
     // The planner awaited: if the user removed or resized this window while
-    // it ran, drop the result instead of resurrecting a plan for a window
-    // that no longer exists.
+    // it ran (or reset the whole app: the epoch check), drop the result
+    // instead of resurrecting a plan for a window that no longer exists.
     const windowStillExists = (get().availabilityByDate[date]?.windows ?? []).some(
       (w) => planKey(date, w) === key,
     );
-    if (!windowStillExists) {
+    if (!windowStillExists || epoch !== storeEpoch) {
       set((s) => ({ planning: { ...s.planning, [key]: { status: 'idle' } } }));
       return;
     }

@@ -1,9 +1,12 @@
 // =============================================================================
 // OutNYC: AsyncStorage-backed Repository (lib/storage/asyncStorageRepository.ts)
 // =============================================================================
-// On-device persistence behind the Repository interface. All reads parse
-// defensively (try/catch around JSON.parse) and never throw on corrupt data:
-// they return null/[] and let the caller surface an empty/error state.
+// On-device persistence behind the Repository interface. Reads are doubly
+// defensive: try/catch around JSON.parse AND shape validation on what parsed,
+// so a corrupt or wrong-version value can never crash bootstrap: it degrades
+// to a missing row instead. Writes report failures (storage full, storage
+// blocked) through onPersistenceError so the UI can warn instead of silently
+// losing everything on the next reload.
 // =============================================================================
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -47,8 +50,25 @@ async function readJSON<T>(key: string, fallback: T): Promise<T> {
   }
 }
 
+/**
+ * Called (at most once per failure) when a storage WRITE fails: quota
+ * exceeded, storage blocked, disk full. The store registers a handler that
+ * flips a "your changes are not being saved" banner. Writes never throw:
+ * in-memory state is already updated by the time we persist, and a throw here
+ * would brick bootstrap's healing writes.
+ */
+let persistenceErrorHandler: ((err: unknown) => void) | null = null;
+export function onPersistenceError(handler: (err: unknown) => void): void {
+  persistenceErrorHandler = handler;
+}
+
 async function writeJSON(key: string, value: unknown): Promise<void> {
-  await AsyncStorage.setItem(key, JSON.stringify(value));
+  try {
+    await AsyncStorage.setItem(key, JSON.stringify(value));
+  } catch (err) {
+    console.warn(`[storage] failed to write ${key}:`, err);
+    persistenceErrorHandler?.(err);
+  }
 }
 
 /**
@@ -69,6 +89,78 @@ function planKey(date: string, windowStart: string, windowEnd: string): string {
   return `${date}|${windowStart}|${windowEnd}`;
 }
 
+// ---- shape validation -------------------------------------------------------
+// Stored values can be truncated mid-write, hand-edited, or written by a
+// different app version. Everything read from disk passes one of these guards
+// before the store sees it; invalid entries are dropped, never thrown on.
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v != null && !Array.isArray(v);
+}
+
+function asRecord(v: unknown): Record<string, unknown> {
+  return isRecord(v) ? v : {};
+}
+
+function isAvailability(v: unknown): v is Availability {
+  return (
+    isRecord(v) &&
+    typeof v.date === 'string' &&
+    DATE_RE.test(v.date) &&
+    Array.isArray(v.windows) &&
+    v.windows.every(
+      (w) => isRecord(w) && typeof w.start === 'string' && typeof w.end === 'string',
+    )
+  );
+}
+
+function isPlan(v: unknown): v is Plan {
+  return (
+    isRecord(v) &&
+    typeof v.id === 'string' &&
+    typeof v.date === 'string' &&
+    DATE_RE.test(v.date) &&
+    isRecord(v.window) &&
+    typeof v.window.start === 'string' &&
+    typeof v.window.end === 'string' &&
+    Array.isArray(v.items) &&
+    v.items.every((i) => isRecord(i) && typeof i.title === 'string' && typeof i.id === 'string')
+  );
+}
+
+function isDayPrefs(v: unknown): v is DayPrefs {
+  return isRecord(v) && typeof v.date === 'string' && DATE_RE.test(v.date);
+}
+
+function isBucketItem(v: unknown): v is BucketItem {
+  return isRecord(v) && typeof v.id === 'string' && typeof v.title === 'string';
+}
+
+function isProfile(v: unknown): v is Profile {
+  return (
+    isRecord(v) &&
+    typeof v.partySize === 'number' &&
+    Array.isArray(v.defaultNeighborhoods) &&
+    Array.isArray(v.interests) &&
+    isRecord(v.priceRange) &&
+    typeof v.priceRange.min === 'number' &&
+    typeof v.priceRange.max === 'number' &&
+    typeof v.onboarded === 'boolean'
+  );
+}
+
+/** Read a per-date map, dropping entries that fail the guard. */
+async function readMap<T>(key: string, guard: (v: unknown) => v is T): Promise<Record<string, T>> {
+  const raw = asRecord(await readJSON<unknown>(key, {}));
+  const out: Record<string, T> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (guard(v)) out[k] = v;
+  }
+  return out;
+}
+
 export class AsyncStorageRepository implements Repository {
   readonly name = 'AsyncStorage';
 
@@ -81,10 +173,15 @@ export class AsyncStorageRepository implements Repository {
 
   private async ensureSchemaVersion(): Promise<void> {
     const stored = await readJSON<number | null>(KEYS.schemaVersion, null);
+    // Data stamped by NEWER code (a stale cached bundle running against a
+    // migrated store): leave it completely alone. Re-stamping the older
+    // version here would make the next up-to-date launch re-run migrations
+    // against already-migrated data.
+    if (typeof stored === 'number' && stored > SCHEMA_VERSION) return;
     // Missing key means fresh install or pre-versioning data: both are the
     // version-1 shape, so there is nothing to migrate from.
-    const from = stored ?? SCHEMA_VERSION;
-    if (from !== SCHEMA_VERSION) {
+    const from = typeof stored === 'number' ? stored : SCHEMA_VERSION;
+    if (from < SCHEMA_VERSION) {
       await this.migrate(from);
     }
     if (stored !== SCHEMA_VERSION) {
@@ -102,7 +199,8 @@ export class AsyncStorageRepository implements Repository {
   }
 
   async getProfile(): Promise<Profile | null> {
-    return readJSON<Profile | null>(KEYS.profile, null);
+    const raw = await readJSON<unknown>(KEYS.profile, null);
+    return isProfile(raw) ? raw : null;
   }
 
   async saveProfile(profile: Profile): Promise<void> {
@@ -110,7 +208,7 @@ export class AsyncStorageRepository implements Repository {
   }
 
   private async availabilityMap(): Promise<Record<string, Availability>> {
-    return readJSON<Record<string, Availability>>(KEYS.availability, {});
+    return readMap(KEYS.availability, isAvailability);
   }
 
   async getAvailability(date: string): Promise<Availability | null> {
@@ -136,15 +234,26 @@ export class AsyncStorageRepository implements Repository {
   }
 
   async getBucketList(): Promise<BucketItem[]> {
-    return readJSON<BucketItem[]>(KEYS.bucketList, []);
+    const raw = await readJSON<unknown>(KEYS.bucketList, []);
+    if (!Array.isArray(raw)) return [];
+    // Normalize optional fields so one missing property (partial corruption,
+    // older app version) degrades to defaults instead of crashing the healer.
+    return raw.filter(isBucketItem).map((item, i) => ({
+      ...item,
+      tags: Array.isArray(item.tags) ? item.tags : [],
+      done: item.done === true,
+      sortOrder: typeof item.sortOrder === 'number' ? item.sortOrder : i,
+    }));
   }
 
   async saveBucketList(items: BucketItem[]): Promise<void> {
-    await writeJSON(KEYS.bucketList, items);
+    // Serialized: a whole-value write racing a concurrent read-modify-write
+    // on the chain could interleave halves of two saves.
+    await serialized(() => writeJSON(KEYS.bucketList, items));
   }
 
   private async plansMap(): Promise<Record<string, Plan>> {
-    return readJSON<Record<string, Plan>>(KEYS.plans, {});
+    return readMap(KEYS.plans, isPlan);
   }
 
   async getPlan(
@@ -167,20 +276,26 @@ export class AsyncStorageRepository implements Repository {
   }
 
   async getAllDayPrefs(): Promise<DayPrefs[]> {
-    const map = await readJSON<Record<string, DayPrefs>>(KEYS.dayPrefs, {});
+    const map = await readMap(KEYS.dayPrefs, isDayPrefs);
     return Object.values(map);
   }
 
   async saveDayPrefs(prefs: DayPrefs): Promise<void> {
     await serialized(async () => {
-      const map = await readJSON<Record<string, DayPrefs>>(KEYS.dayPrefs, {});
+      const map = await readMap(KEYS.dayPrefs, isDayPrefs);
       map[prefs.date] = prefs;
       await writeJSON(KEYS.dayPrefs, map);
     });
   }
 
   async getSeenMap(): Promise<Record<string, string[]>> {
-    return readJSON<Record<string, string[]>>(KEYS.seen, {});
+    const raw = asRecord(await readJSON<unknown>(KEYS.seen, {}));
+    const out: Record<string, string[]> = {};
+    for (const [date, ids] of Object.entries(raw)) {
+      if (!DATE_RE.test(date) || !Array.isArray(ids)) continue;
+      out[date] = ids.filter((id): id is string => typeof id === 'string');
+    }
+    return out;
   }
 
   async saveSeenMap(map: Record<string, string[]>): Promise<void> {
@@ -209,29 +324,79 @@ export class AsyncStorageRepository implements Repository {
   }
 
   async getFeedback(planId: string): Promise<Feedback[]> {
-    const all = await readJSON<Feedback[]>(KEYS.feedback, []);
-    return all.filter((f) => f.planId === planId);
+    const all = await readJSON<unknown>(KEYS.feedback, []);
+    if (!Array.isArray(all)) return [];
+    return all.filter(
+      (f): f is Feedback => isRecord(f) && f.planId === planId,
+    );
   }
 
   async addFeedback(feedback: Feedback): Promise<void> {
     await serialized(async () => {
-      const all = await readJSON<Feedback[]>(KEYS.feedback, []);
-      all.push(feedback);
-      await writeJSON(KEYS.feedback, all);
+      const all = await readJSON<unknown>(KEYS.feedback, []);
+      const list = Array.isArray(all) ? all : [];
+      list.push(feedback);
+      await writeJSON(KEYS.feedback, list);
+    });
+  }
+
+  async pruneBefore(cutoffDate: string): Promise<void> {
+    await serialized(async () => {
+      const avail = await this.availabilityMap();
+      let changed = false;
+      for (const date of Object.keys(avail)) {
+        if (date < cutoffDate) {
+          delete avail[date];
+          changed = true;
+        }
+      }
+      if (changed) await writeJSON(KEYS.availability, avail);
+
+      const plans = await this.plansMap();
+      changed = false;
+      for (const [key, p] of Object.entries(plans)) {
+        if (p.date < cutoffDate) {
+          delete plans[key];
+          changed = true;
+        }
+      }
+      if (changed) await writeJSON(KEYS.plans, plans);
+
+      const prefs = await readMap(KEYS.dayPrefs, isDayPrefs);
+      changed = false;
+      for (const date of Object.keys(prefs)) {
+        if (date < cutoffDate) {
+          delete prefs[date];
+          changed = true;
+        }
+      }
+      if (changed) await writeJSON(KEYS.dayPrefs, prefs);
+
+      // Feedback rows only mean anything while their plan exists.
+      const rawFeedback = await readJSON<unknown>(KEYS.feedback, []);
+      if (Array.isArray(rawFeedback) && rawFeedback.length > 0) {
+        const planIds = new Set(Object.values(plans).map((p) => p.id));
+        const kept = rawFeedback.filter((f) => isRecord(f) && planIds.has(f.planId as string));
+        if (kept.length !== rawFeedback.length) await writeJSON(KEYS.feedback, kept);
+      }
     });
   }
 
   async clearAll(): Promise<void> {
-    await AsyncStorage.multiRemove([
-      KEYS.profile,
-      KEYS.availability,
-      KEYS.bucketList,
-      KEYS.plans,
-      KEYS.locked,
-      KEYS.feedback,
-      KEYS.dayPrefs,
-      KEYS.seen,
-    ]);
+    // Serialized so a queued earlier write can't land AFTER the wipe and
+    // resurrect pre-reset data.
+    await serialized(() =>
+      AsyncStorage.multiRemove([
+        KEYS.profile,
+        KEYS.availability,
+        KEYS.bucketList,
+        KEYS.plans,
+        KEYS.locked,
+        KEYS.feedback,
+        KEYS.dayPrefs,
+        KEYS.seen,
+      ]),
+    );
   }
 }
 

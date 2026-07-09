@@ -19,12 +19,21 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button, Caption, Eyebrow, Heading, LoadingView } from '../../components/ui';
+import {
+  Button,
+  Caption,
+  ErrorView,
+  Eyebrow,
+  Heading,
+  LoadingView,
+  PersistenceBanner,
+} from '../../components/ui';
 import { parseBucketText, parseList } from '../../lib/bucketParse';
 import { confirmDestructive } from '../../lib/confirm';
 import { useStore } from '../../lib/store';
 import { colors, font, radius, spacing } from '../../lib/theme';
-import { monthDayLabel, todayNY, weekdayLabel } from '../../lib/time';
+import { monthDayLabel, weekdayLabel } from '../../lib/time';
+import { useTodayNY } from '../../lib/useTodayNY';
 import type { BucketItem } from '../../lib/types';
 
 // ---- Screen -----------------------------------------------------------------
@@ -33,11 +42,17 @@ export default function BucketScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const loadStatus = useStore((s) => s.loadStatus);
+  const loadError = useStore((s) => s.loadError);
+  const bootstrap = useStore((s) => s.bootstrap);
   const bucketList = useStore((s) => s.bucketList);
   const plansByKey = useStore((s) => s.plansByKey);
   const addBucketItems = useStore((s) => s.addBucketItems);
   const toggleBucketDone = useStore((s) => s.toggleBucketDone);
   const removeBucketItem = useStore((s) => s.removeBucketItem);
+
+  // Live NY date: the "On calendar" chips below compare against it, and a
+  // home-screen PWA can sit resumed for days without ever remounting.
+  const today = useTodayNY();
 
   const [draft, setDraft] = useState('');
   const parsedCount = useMemo(() => parseList(draft).length, [draft]);
@@ -53,7 +68,6 @@ export default function BucketScreen() {
   // today is ignored: a stale last-week placement must neither show as "on
   // calendar" nor mask a genuinely upcoming one.
   const scheduledDateById = useMemo(() => {
-    const today = todayNY();
     const map: Record<string, string> = {};
     for (const p of Object.values(plansByKey)) {
       if (p.date < today) continue;
@@ -64,10 +78,20 @@ export default function BucketScreen() {
       }
     }
     return map;
-  }, [plansByKey]);
+  }, [plansByKey, today]);
 
   if (loadStatus === 'loading' || loadStatus === 'idle') {
     return <LoadingView label="Loading your list…" />;
+  }
+  // Rendering an empty list on a failed load would invite the user to "add"
+  // an item, and that write would replace their real, still-stored list.
+  if (loadStatus === 'error') {
+    return (
+      <ErrorView
+        message={loadError ?? 'We could not load your bucket list.'}
+        onRetry={() => void bootstrap()}
+      />
+    );
   }
 
   async function onAdd() {
@@ -97,6 +121,7 @@ export default function BucketScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xxl }]}
         keyboardShouldPersistTaps="handled"
       >
+        <PersistenceBanner />
         <Eyebrow>Your list</Eyebrow>
         <Caption muted>
           Paste a whole list (numbered or one per line). The planner weaves open

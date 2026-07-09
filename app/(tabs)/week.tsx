@@ -8,24 +8,38 @@
 // "Plan my whole week" (fill + auto-plan empty future days) and Clear week.
 // =============================================================================
 
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DayPanel } from '../../components/DayPanel';
 import { WeekGrid } from '../../components/WeekGrid';
-import { Button, Caption, LoadingView } from '../../components/ui';
+import { Button, Caption, ErrorView, LoadingView, PersistenceBanner } from '../../components/ui';
 import { confirmDestructive } from '../../lib/confirm';
 import { useStore } from '../../lib/store';
 import { colors, font, radius, spacing } from '../../lib/theme';
-import { addDays, mondayOf, todayNY, weekDates, weekRangeLabel } from '../../lib/time';
+import {
+  addDays,
+  fromMinutes,
+  mondayOf,
+  nowMinutesNY,
+  toMinutes,
+  weekDates,
+  weekRangeLabel,
+} from '../../lib/time';
+import { useTodayNY } from '../../lib/useTodayNY';
 import type { TimeWindow } from '../../lib/types';
+
+/** The free evening "Plan my whole week" paints onto an empty day. */
+const DEFAULT_EVENING: TimeWindow = { start: '18:00', end: '23:00' };
 
 export default function WeekScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const loadStatus = useStore((s) => s.loadStatus);
+  const bootstrap = useStore((s) => s.bootstrap);
+  const loadError = useStore((s) => s.loadError);
   const availabilityByDate = useStore((s) => s.availabilityByDate);
   const plansByKey = useStore((s) => s.plansByKey);
   const dayPrefsByDate = useStore((s) => s.dayPrefsByDate);
@@ -37,24 +51,11 @@ export default function WeekScreen() {
   const [scrollEnabled, setScrollEnabled] = useState(true);
   const scrollRef = useRef<ScrollView>(null);
 
-  const [today, setToday] = useState(() => todayNY());
+  // Refreshes on foreground, on focus, and at NY midnight while the app stays
+  // open, so the today-ring and the past-day filters below never go stale.
+  const today = useTodayNY();
   const monday = useMemo(() => mondayOf(addDays(today, weekOffset * 7)), [today, weekOffset]);
   const dates = useMemo(() => weekDates(monday), [monday]);
-
-  // 'today' is captured in state, so refresh it whenever the app foregrounds or
-  // this screen regains focus: otherwise the today-highlight (and the week the
-  // grid anchors to) go stale after midnight.
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') setToday(todayNY());
-    });
-    return () => sub.remove();
-  }, []);
-  useFocusEffect(
-    useCallback(() => {
-      setToday(todayNY());
-    }, []),
-  );
 
   // Stable callbacks so WeekGrid's memoized internals aren't re-rendered by
   // fresh closures on every pass. Zustand actions are referentially stable.
@@ -72,11 +73,26 @@ export default function WeekScreen() {
   if (loadStatus === 'loading' || loadStatus === 'idle') {
     return <LoadingView label="Loading your week…" />;
   }
+  // Without this, a failed load renders an empty but fully interactive grid:
+  // the user's real week looks erased, and painting hours writes into a store
+  // that never finished loading.
+  if (loadStatus === 'error') {
+    return (
+      <ErrorView
+        message={loadError ?? 'We could not load your week.'}
+        onRetry={() => void bootstrap()}
+      />
+    );
+  }
 
   // Only today-or-future days are auto-fillable: planning a past evening is
   // never useful, and on a fully past week the button disappears entirely.
-  const emptyDates = dates.filter(
-    (d) => d >= today && (availabilityByDate[d]?.windows.length ?? 0) === 0,
+  // Today drops out too once its default evening has already elapsed (tapping
+  // this at 11:30 PM should not paint a 6-11 PM window that is entirely past).
+  const todayStillPlannable = nowMinutesNY() < toMinutes(DEFAULT_EVENING.end);
+  const plannableDates = dates.filter((d) => d > today || (d === today && todayStillPlannable));
+  const emptyDates = plannableDates.filter(
+    (d) => (availabilityByDate[d]?.windows.length ?? 0) === 0,
   );
   const anyFree = dates.some((d) => (availabilityByDate[d]?.windows.length ?? 0) > 0);
   const anyPlans = dates.some((d) =>
@@ -91,9 +107,25 @@ export default function WeekScreen() {
   function onPlanWholeWeek() {
     // One tap plans the entire week: every empty day gets a free evening,
     // and auto-planning fills each with an itinerary immediately. Days that
-    // already have free time are left exactly as they are.
+    // already have free time are left exactly as they are. On today, the
+    // window starts at the next whole hour so the plan never opens in the past.
     for (const d of emptyDates) {
-      void setAvailability(d, [{ start: '18:00', end: '23:00' }]);
+      const window =
+        d === today
+          ? {
+              start: fromMinutes(
+                Math.max(
+                  toMinutes(DEFAULT_EVENING.start),
+                  Math.ceil(nowMinutesNY() / 60) * 60,
+                ),
+              ),
+              end: DEFAULT_EVENING.end,
+            }
+          : DEFAULT_EVENING;
+      // A late tap can leave under an hour before 23:00; skip rather than
+      // create a sliver the planner cannot fill.
+      if (toMinutes(window.end) - toMinutes(window.start) < 60) continue;
+      void setAvailability(d, [window]);
     }
   }
 
@@ -164,6 +196,7 @@ export default function WeekScreen() {
         scrollEnabled={scrollEnabled}
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xxl }]}
       >
+        <PersistenceBanner />
         {anyFree ? (
           <Caption muted>
             Tap an hour to add free time: it plans itself instantly. Drag a
@@ -181,7 +214,7 @@ export default function WeekScreen() {
         {emptyDates.length > 0 ? (
           <Button
             label={
-              emptyDates.length === dates.filter((d) => d >= today).length
+              emptyDates.length === plannableDates.length
                 ? 'Plan my whole week'
                 : `Plan the other ${emptyDates.length === 1 ? 'day' : `${emptyDates.length} days`}`
             }

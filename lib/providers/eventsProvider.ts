@@ -23,6 +23,7 @@ import { nearestNeighborhood, OUTSIDE_AREA_LABEL } from '../geo';
 import { fromMinutes, nyDateTimeToLocalDate, toMinutes } from '../time';
 import type { Candidate, PriceTier, ProviderInfo } from '../types';
 import { fetchJson } from './net';
+import { filterToDate } from './seasonality';
 import { nycOpenDataProvider } from './nycOpenDataProvider';
 import { nycParksProvider } from './nycParksProvider';
 import { seatgeekProvider } from './seatgeekProvider';
@@ -206,8 +207,11 @@ export const eventsProvider = {
    * never throws.
    */
   async fetchEvents(date: string): Promise<ProviderResult> {
-    const seedActivities = SEED_EVENTS.filter((s) => s.kind !== 'event');
-    const seedFixedEvents = SEED_EVENTS.filter((s) => s.kind === 'event');
+    // Seasonal and day-specific curated entries drop out here, before any pool
+    // is built: no Mets game in February, no Sunday gospel on a Wednesday.
+    const inSeason = filterToDate(SEED_EVENTS, date);
+    const seedActivities = inSeason.filter((s) => s.kind !== 'event');
+    const seedFixedEvents = inSeason.filter((s) => s.kind === 'event');
 
     const [tm, sg, od, pk] = await Promise.all([
       fetchTicketmaster(date),

@@ -15,6 +15,7 @@ import {
   ViewStyle,
 } from 'react-native';
 
+import { useStore } from '../lib/store';
 import { colors, font, radius, spacing } from '../lib/theme';
 
 // ---- Text ------------------------------------------------------------------
@@ -181,6 +182,26 @@ export function ErrorView({ message, onRetry }: { message: string; onRetry?: () 
   );
 }
 
+/**
+ * Shown once a storage write has failed (device storage full, or the browser
+ * is blocking storage). Everything on screen still works; it just will not
+ * survive a reload, and the user deserves to know that before they lose a
+ * week of planning.
+ */
+export function PersistenceBanner() {
+  const broken = useStore((s) => s.persistenceBroken);
+  if (!broken) return null;
+  return (
+    <View style={styles.warnBanner}>
+      <Text style={styles.warnTitle}>Changes are not being saved</Text>
+      <Text style={styles.warnBody}>
+        Your device storage is full or blocked, so this week will not be here
+        when you come back. Free up space, then reopen OutNYC.
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   title: {
     color: colors.text,
@@ -315,5 +336,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.md,
     padding: spacing.xl,
+  },
+  warnBanner: {
+    backgroundColor: colors.goldSoft,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.warning,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    gap: 2,
+  },
+  warnTitle: {
+    color: colors.text,
+    fontSize: font.size.sm,
+    fontWeight: font.weight.bold,
+  },
+  warnBody: {
+    color: colors.textMuted,
+    fontSize: font.size.sm,
+    lineHeight: 19,
   },
 });
