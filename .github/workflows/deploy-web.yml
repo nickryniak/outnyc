@@ -31,7 +31,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Export static web build
-        run: npx expo export --platform web
+        run: npx expo export --platform web && node scripts/inject-web-shell.js dist
         env:
           EXPO_BASE_URL: /outnyc
       - name: SPA fallback for client-side routes

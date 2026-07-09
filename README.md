@@ -18,7 +18,29 @@ iPhone with **no native build step**.
 
 ---
 
-## Run it
+## Put it on your phone (fastest)
+
+The app is live at **https://nickryniak.github.io/outnyc/** as an installable
+web app. On your iPhone:
+
+1. Open the link in **Safari**.
+2. Tap **Share**, then **Add to Home Screen**, then **Add**.
+
+You get the OutNYC icon on your home screen; it launches full-screen like a
+native app, **works offline** after the first visit (a service worker caches
+the app shell), and keeps all your data on the device. New versions arrive
+automatically the next time you open it online.
+
+The web build pipeline: `npm run export:web` exports the static site and runs
+[scripts/inject-web-shell.js](scripts/inject-web-shell.js), which injects the
+PWA shell (manifest, icons, iOS home-screen metadata, service-worker
+registration) into the exported `index.html`. The deploy workflow
+([.github/workflows/deploy-web.yml](.github/workflows/deploy-web.yml)) does the
+same on every push to `main`.
+
+---
+
+## Run it (Expo Go)
 
 You need [Node](https://nodejs.org/) and the **Expo Go** app on your iPhone
 (App Store). No Xcode, no native build.
